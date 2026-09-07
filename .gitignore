@@ -35,6 +35,8 @@ scripts/fixtures/isolated-repo/*
 # Orrery daemon runtime metadata and capability material.
 runtime/
 .orrery-runtime/
+# Isolated agent implementation worktrees.
+.worktrees/
 
 .vercel
 .env*
