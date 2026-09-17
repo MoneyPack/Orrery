@@ -49,7 +49,7 @@ export async function runAuthoritativeDaemonSmoke(trustedReviewer = "daemon-smok
       verificationCommandResolver: (_repository, context) => context.title === "Cancel active verification"
         ? longVerificationCommand
         : quickVerificationCommand,
-      trustedApprovalContext: { reviewerId: () => trustedReviewer },
+      trustedApprovalContext: { id: () => trustedReviewer },
     });
     ({ server } = await startServer(runtimePath, bootstrap));
     const first = await connectClient(server, runtimePath);
@@ -160,7 +160,7 @@ export async function runAuthoritativeDaemonSmoke(trustedReviewer = "daemon-smok
     bootstrap = await createDaemonAuthority(runtimePath, {
       trustedVerificationCommands: [quickVerificationCommand],
       verificationCommandResolver: () => undefined,
-      trustedApprovalContext: { reviewerId: () => trustedReviewer },
+      trustedApprovalContext: { id: () => trustedReviewer },
     });
     ({ server } = await startServer(runtimePath, bootstrap));
     const restarted = await connectClient(server, runtimePath);

@@ -23,6 +23,13 @@ export interface RuntimeDirectoryOptions {
   localAppData?: string;
   platform?: NodeJS.Platform;
   harden?: (path: string, platform?: NodeJS.Platform) => Promise<void>;
+  /**
+   * Test seam: when false, skip the on-disk ancestry probe/mkdir for the win32 branch so the
+   * pure path arithmetic and hardening computation can be exercised on non-Windows hosts
+   * (win32-resolved POSIX paths like "\tmp\..." cannot be lstat'd there). Production callers
+   * never set this; all probes stay enabled by default.
+   */
+  probeFilesystem?: boolean;
 }
 
 const DEFAULT_RUNTIME = join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Orrery", "runtime");
@@ -53,8 +60,15 @@ export async function createRuntimeDirectory(options: RuntimeDirectoryOptions = 
     }
   }
   if (platform === "win32") {
+    const appRoot = win32Path.dirname(win32Path.resolve(runtime));
+    if (options.probeFilesystem === false) {
+      // Test-only seam: skip ancestry probes that cannot address the host filesystem when a
+      // non-Windows platform exercises the win32 path arithmetic and hardening computation.
+      await (options.harden ?? hardenPrivatePath)(appRoot, platform);
+      await (options.harden ?? hardenPrivatePath)(win32Path.resolve(runtime), platform);
+      return runtime;
+    }
     await ensureRealAncestry(trustedRoot as string, win32Path.resolve(runtime));
-    const appRoot = dirname(win32Path.resolve(runtime));
     await mkdir(appRoot, { recursive: true, mode: 0o700 });
     await ensureRealDirectory(appRoot);
     await (options.harden ?? hardenPrivatePath)(appRoot, platform);

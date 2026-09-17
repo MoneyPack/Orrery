@@ -395,21 +395,67 @@ async function recoverJournals(stateDirectory: string) {
 
 async function completeJournal(stateDirectory: string, journal: TransactionJournal) {
   const paths = pathsFor(stateDirectory);
+  const baseSequence = (journal.events[0]?.sequence ?? journal.snapshot.lastEventSequence + 1) - 1;
+  const snapshotPath = join(paths.missions, `${journal.missionId}.json`);
+  const snapshotCoversJournal = await snapshotAlreadyCoversJournal(snapshotPath, journal, baseSequence);
   const eventPath = join(paths.events, `${journal.missionId}.jsonl`);
   const file = await readEventFile(eventPath, true);
   validateEventHistory(file.records, journal.missionId);
+  // Durable order is events, then snapshot, then journal removal. Crashing between any two
+  // steps restarts this function, so every step before the removal is idempotent by
+  // construction: event content is merged (never re-appended) against what already persisted,
+  // and a snapshot rename is atomic and safe to repeat.
   if (journal.retainedEvents) {
-    validateEventHistory(journal.retainedEvents, journal.missionId);
-    await replaceEvents(eventPath, journal.retainedEvents);
-    await atomicWriteJson(join(paths.missions, `${journal.missionId}.json`), journal.snapshot, MAX_SNAPSHOT_BYTES);
-    await removeJournal(stateDirectory, journal.missionId);
-    await assertSnapshotConsistent(stateDirectory, journal.snapshot);
-    return;
+    await completeRetainedJournal(eventPath, file.records, journal);
+  } else {
+    await completeAppendingJournal(eventPath, file, journal, baseSequence);
   }
-  const firstSequence = journal.events[0]?.sequence ?? journal.snapshot.lastEventSequence + 1;
-  const baseSequence = firstSequence - 1;
+  if (!snapshotCoversJournal) await atomicWriteJson(snapshotPath, journal.snapshot, MAX_SNAPSHOT_BYTES);
+  await removeJournal(stateDirectory, journal.missionId);
+  await assertSnapshotConsistent(stateDirectory, journal.snapshot);
+}
+
+/**
+ * Decides whether the snapshot already carries the journaled commit, making the atomic
+ * rewrite below a no-op. A snapshot at the journal's target sequence is exactly that: a crash
+ * after the rename but before the journal removal, and repeating the rename would be harmless
+ * but is skipped for clarity. A snapshot at the base sequence is the pre-transaction state
+ * (or no snapshot at all, for a transaction that starts at sequence one), so the write still
+ * has to happen. Anything else cannot be explained by this journal's lifecycle and no
+ * automatic merge is safe.
+ */
+async function snapshotAlreadyCoversJournal(snapshotPath: string, journal: TransactionJournal, baseSequence: number) {
+  try {
+    const current = await readSnapshotFile(snapshotPath);
+    if (current.id !== journal.missionId) throw new Error("Corrupt transaction journal: snapshot mission mismatch.");
+    if (current.lastEventSequence === journal.snapshot.lastEventSequence) return true;
+    if (current.lastEventSequence !== baseSequence) throw new Error("Corrupt transaction journal: snapshot sequence cannot be recovered.");
+    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (baseSequence !== 0) throw new Error("Corrupt transaction journal: prior snapshot is missing.");
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function completeRetainedJournal(eventPath: string, records: readonly MissionEventRecord[], journal: TransactionJournal) {
+  const retained = journal.retainedEvents!;
+  validateEventHistory(retained, journal.missionId);
+  // The event file may still hold the pre-transaction history (crash before the replacement)
+  // or already be the retained window (crash after it). An append-only merge is not possible
+  // here, so the rewrite is only skipped when the file already matches the journal exactly.
+  const identical = records.length === retained.length && records.every((record, index) => JSON.stringify(record) === JSON.stringify(retained[index]));
+  if (!identical) await replaceEvents(eventPath, retained);
+}
+
+async function completeAppendingJournal(eventPath: string, file: EventFile, journal: TransactionJournal, baseSequence: number) {
   const targetSequence = journal.snapshot.lastEventSequence;
-  if (journal.events.some((event, index) => event.missionId !== journal.missionId || event.sequence !== firstSequence + index) || baseSequence + journal.events.length !== targetSequence || file.records.length < baseSequence || file.records.length > targetSequence) throw new Error("Corrupt transaction journal sequence.");
+  // The persisted log may hold anything from baseSequence to targetSequence events; the slice
+  // beyond baseSequence is the prefix of the journaled events already durable (the log is
+  // append-only, so a persisted prefix can never be torn in the middle of the file).
+  if (journal.events.some((event, index) => event.missionId !== journal.missionId || event.sequence !== baseSequence + 1 + index) || baseSequence + journal.events.length !== targetSequence || file.records.length < baseSequence || file.records.length > targetSequence) throw new Error("Corrupt transaction journal sequence.");
   for (let index = baseSequence; index < file.records.length; index += 1) {
     if (JSON.stringify(file.records[index]) !== JSON.stringify(journal.events[index - baseSequence])) throw new Error("Corrupt transaction journal: persisted event differs from journal.");
   }
@@ -420,17 +466,6 @@ async function completeJournal(stateDirectory: string, journal: TransactionJourn
     await truncate(eventPath, file.completeBytes);
   }
   await appendAndFlush(eventPath, remaining);
-  const snapshotPath = join(paths.missions, `${journal.missionId}.json`);
-  try {
-    const current = await readSnapshotFile(snapshotPath);
-    if (current.id !== journal.missionId || ![baseSequence, targetSequence].includes(current.lastEventSequence)) throw new Error("Corrupt transaction journal: snapshot sequence cannot be recovered.");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    if (baseSequence !== 0) throw new Error("Corrupt transaction journal: prior snapshot is missing.");
-  }
-  await atomicWriteJson(snapshotPath, journal.snapshot, MAX_SNAPSHOT_BYTES);
-  await removeJournal(stateDirectory, journal.missionId);
-  await assertSnapshotConsistent(stateDirectory, journal.snapshot);
 }
 
 export async function appendEventsDirect(stateDirectory: string, events: readonly MissionEventRecord[], options: { maxEventFileBytes?: number; retainedEventCount?: number } = {}) {

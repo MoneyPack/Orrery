@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,6 +8,16 @@ import { describe, expect, it } from "vitest";
 import { createMission, transitionMission } from "../packages/mission-control-domain/src/index";
 import { FileMissionStore, type GitInspector, type MissionSnapshot } from "../packages/mission-control-daemon/src/index";
 import { createDaemonAuthority } from "./daemon-authority-bootstrap";
+
+// Mirrors the authority's canonical request digest so fixtures can own matching operation records.
+function authorityRequestDigest(value: unknown): string {
+  const canonical = (input: unknown): string => {
+    if (Array.isArray(input)) return `[${input.map(canonical).join(",")}]`;
+    if (input && typeof input === "object") return `{${Object.entries(input).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
+    return JSON.stringify(input);
+  };
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
 
 /**
  * Scales the two adversarial-persistence budgets the way every other real-process suite in this
@@ -252,24 +263,57 @@ describe("daemon authority bootstrap", { timeout: 60_000 }, () => {
     }
   });
 
-  it.each(["prepared", "in_progress"] as const)("durably resets a %s run operation stranded before active run persistence", async (state) => {
+  it.each(["prepared", "in_progress"] as const)("durably reconciles a %s run operation interrupted before a terminal outcome", async (state) => {
     const parent = await mkdtemp(join(tmpdir(), `orrery-authority-${state}-recovery-`));
     try {
       const runtime = join(parent, "runtime");
-      const bootstrap = await createDaemonAuthority(runtime);
+      const repositoryRoot = join(parent, "repository");
+      await mkdir(repositoryRoot);
+      await git(["init", "--initial-branch", "main"], repositoryRoot);
+      await git(["config", "user.email", "recovery-test@orrery.local"], repositoryRoot);
+      await git(["config", "user.name", "Orrery Recovery Test"], repositoryRoot);
+      await writeFile(join(repositoryRoot, "fixture.txt"), "initial\n", "utf8");
+      await git(["add", "fixture.txt"], repositoryRoot);
+      await git(["commit", "-m", "fixture"], repositoryRoot);
+      const gitInspector: GitInspector = { inspect: async () => ({ canonicalRoot: repositoryRoot, gitIdentity: "fixture-git" }) };
+      const command = { executable: process.execPath, args: ["-e", "setTimeout(() => {}, 30_000)"] };
+      const bootstrap = await createDaemonAuthority(runtime, { gitInspector, trustedVerificationCommands: [command], verificationCommandResolver: () => command });
+      const proposal = await bootstrap.registry.propose(repositoryRoot);
+      const approved = await bootstrap.registry.approve({ proposalId: proposal.proposalId, fingerprint: proposal.fingerprint, approvalNonce: proposal.approvalNonce });
       const store = new FileMissionStore(runtime);
-      const stranded = queuedMission(state);
+      const stranded = queuedMission(state, approved);
       await store.create(stranded);
 
+      // The startup sweep defers authority-owned run operations to the authority's
+      // lazy per-mission reconciliation, so nothing changes before a request lands.
       await bootstrap.recoverActiveMissions();
+      await expect(store.load(stranded.id)).resolves.toMatchObject({ status: "queued", lastEventSequence: 0 });
+
+      await expect(bootstrap.authority.run({ intentId: "run-before-restart", missionId: stranded.id, planRevisionId: stranded.plan.id }))
+        .rejects.toThrow(/interrupted/i);
 
       const recovered = await store.load(stranded.id);
-      expect(recovered).toMatchObject({ status: "failed", lastEventSequence: 1 });
+      expect(recovered).toMatchObject({ status: "blocked", lastEventSequence: 1 });
       expect(recovered?.activeRunId).toBeUndefined();
-      expect(recovered?.operations?.["run-before-restart"]).toBeUndefined();
+      expect(recovered?.completionSummary).toMatch(/interrupted/i);
+      expect(recovered?.operations?.["run-before-restart"]).toMatchObject({ operation: "run", state: "interrupted", runId: "operation-run-id" });
       expect(recovered?.events).toEqual([expect.objectContaining({ kind: "interruption", runId: "operation-run-id", sequence: 1 })]);
-      await bootstrap.recoverActiveMissions();
       await expect(bootstrap.eventSource.readAfter(stranded.id, 0)).resolves.toHaveLength(1);
+
+      // Recovery is idempotent: a repeated sweep and request change nothing durable.
+      await bootstrap.recoverActiveMissions();
+      await expect(bootstrap.authority.run({ intentId: "run-before-restart", missionId: stranded.id, planRevisionId: stranded.plan.id }))
+        .rejects.toThrow(/interrupted/i);
+      const stable = await store.load(stranded.id);
+      expect(stable).toMatchObject({ status: "blocked", lastEventSequence: 1 });
+      await expect(bootstrap.eventSource.readAfter(stranded.id, 0)).resolves.toHaveLength(1);
+
+      // A fresh intent requeues the interrupted mission under the same durable run ID.
+      const requeued = bootstrap.authority.run({ intentId: "run-after-restart", missionId: stranded.id, planRevisionId: stranded.plan.id });
+      const active = await waitForActiveRun(store, stranded.id, requeued);
+      expect(active).toBe("operation-run-id");
+      await expect(bootstrap.authority.cancel({ intentId: "cancel-after-restart", missionId: stranded.id, runId: active })).resolves.toMatchObject({ status: "cancelled" });
+      await expect(requeued).rejects.toThrow();
     } finally {
       await rm(parent, { recursive: true, force: true });
     }
@@ -315,7 +359,7 @@ function activeMission(): MissionSnapshot {
   return { ...mission, repositoryId: "repository-1", fingerprint: "fingerprint-1", lastEventSequence: 0, payloadVersion: 1 };
 }
 
-function queuedMission(state: "prepared" | "in_progress"): MissionSnapshot {
+function queuedMission(state: "prepared" | "in_progress", repository: { repositoryId: string; fingerprint: string }): MissionSnapshot {
   let mission = createMission({
     title: "Stranded operation",
     goal: "Recover the durable claim",
@@ -324,16 +368,19 @@ function queuedMission(state: "prepared" | "in_progress"): MissionSnapshot {
   });
   mission = transitionMission(mission, { type: "submit_plan" });
   mission = transitionMission(mission, { type: "approve_plan" });
-  return {
+  const approved = {
     ...mission,
-    repositoryId: "repository-1",
-    fingerprint: "fingerprint-1",
+    repositoryId: repository.repositoryId,
+    fingerprint: repository.fingerprint,
     lastEventSequence: 0,
-    payloadVersion: 1,
+    payloadVersion: 1 as const,
+  };
+  return {
+    ...approved,
     operations: {
       "run-before-restart": {
         operation: "run",
-        requestDigest: "a".repeat(64),
+        requestDigest: authorityRequestDigest({ intentId: "run-before-restart", missionId: approved.id, planRevisionId: approved.plan.id }),
         state,
         runId: "operation-run-id",
       },

@@ -104,7 +104,9 @@ describe("daemon lifecycle", { timeout: 30_000 }, () => {
       harden: async (path) => { hardened.push(path); },
     });
 
-    expect(runtime).toBe("C:\\Users\\user\\AppData\\Local\\Orrery\\runtime");
+    // The returned path keeps the host separator (existing production contract); the hardened
+    // ancestry below is what is computed with win32 semantics and asserted exactly.
+    expect(runtime).toBe(join("C:\\Users\\user\\AppData\\Local\\Orrery", "runtime"));
     expect(hardened).toEqual([
       "C:\\Users\\user\\AppData\\Local\\Orrery",
       "C:\\Users\\user\\AppData\\Local\\Orrery\\runtime",

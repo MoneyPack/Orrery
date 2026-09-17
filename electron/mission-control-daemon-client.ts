@@ -750,7 +750,7 @@ export class MissionControlDaemonClient implements MissionIpcService {
            if (code !== 0 && code !== null && process.env.ORRERY_THEIA_SMOKE === "1") console.error(`Managed daemon exited during startup (code ${code}, signal ${signal ?? "none"}).`);
          });
         if (!handoff?.nonce || !child.pid) { child.kill("SIGTERM"); throw new Error("Managed daemon bootstrap pipe is unavailable."); }
-        const bootstrapBinding = completeParentBootstrap(child, handoff.nonce, this.approvals.publicKey);
+        const bootstrapBinding = completeParentBootstrap(child, handoff.nonce, this.approvals.approvalKey);
         void bootstrapBinding.catch(() => child.kill("SIGTERM"));
         return Object.assign(child, { bootstrapBinding });
       },

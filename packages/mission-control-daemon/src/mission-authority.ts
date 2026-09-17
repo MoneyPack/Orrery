@@ -70,7 +70,7 @@ export class MissionAuthority {
   async create(input: CreateMissionAuthorityInput): Promise<MissionSnapshot> {
     this.assertMutable();
     return this.serializeCreate(async () => {
-      const digest = requestDigest(input);
+      const digest = authorityRequestDigest(input);
       const replay = await this.findCreateOutcome(input.intentId, digest);
       if (replay) return replay;
       const approved = await this.options.repositoryRegistry.resolve(input.repositoryId);
@@ -93,7 +93,7 @@ export class MissionAuthority {
     this.assertMutable();
     const claimed = await this.serialize(input.missionId, async () => {
       const mission = await this.load(input.missionId);
-      const digest = requestDigest(input);
+      const digest = authorityRequestDigest(input);
       const replay = this.outcome(mission, input.intentId, "run", digest);
       if (replay) return { promise: Promise.resolve(this.publicRunResult(replay.result)) };
       const active = this.activeRuns.get(input.missionId);
@@ -111,7 +111,10 @@ export class MissionAuthority {
       const approved = await this.options.repositoryRegistry.resolve(mission.repositoryId);
       if (approved.fingerprint !== mission.fingerprint) throw new Error("Approved repository fingerprint does not match the mission.");
       const queued = transitionMission(mission, { type: "approve_plan" });
-      const runId = this.id();
+      // An interrupted durable claim owns the run ID it never consumed; a fresh intent requeues
+      // under that same run ID so the durable retry record and the runner agree.
+      const interruptedClaim = Object.values(mission.operations ?? {}).find((operation): operation is Extract<MissionOperation, { operation: "run"; state: "interrupted" }> => operation.operation === "run" && operation.state === "interrupted");
+      const runId = interruptedClaim?.runId ?? this.id();
       const prepared = this.withOperation(queued as MissionSnapshot, input.intentId, { operation: "run", requestDigest: digest, state: "prepared", runId });
       await this.options.missionStore.save(prepared, []);
       await this.options.missionStore.save(this.withOperation(prepared, input.intentId, { operation: "run", requestDigest: digest, state: "in_progress", runId }), []);
@@ -180,7 +183,7 @@ export class MissionAuthority {
     this.assertMutable();
     const runPromise = await this.serialize(input.missionId, async () => {
       const mission = await this.load(input.missionId);
-      const digest = requestDigest(input);
+      const digest = authorityRequestDigest(input);
       const replay = this.outcome(mission, input.intentId, "cancel", digest);
       if (replay) return { promise: Promise.resolve(), replay: replay.result };
       const active = this.activeRuns.get(input.missionId);
@@ -197,7 +200,7 @@ export class MissionAuthority {
       const runOperation = Object.entries(operations).find(([, operation]) => operation.operation === "run" && operation.runId === input.runId);
       if (runOperation) delete operations[runOperation[0]];
       const cancelled = { ...current, operations };
-      const persisted = this.withOutcome(cancelled, input.intentId, { operation: "cancel", requestDigest: requestDigest(input), result: cancelled });
+      const persisted = this.withOutcome(cancelled, input.intentId, { operation: "cancel", requestDigest: authorityRequestDigest(input), result: cancelled });
       await this.options.missionStore.save(persisted, []);
       return structuredClone(cancelled);
     });
@@ -217,7 +220,7 @@ export class MissionAuthority {
     this.assertMutable();
     return this.serialize(input.missionId, async () => {
       const mission = await this.load(input.missionId);
-      const digest = requestDigest(input);
+      const digest = authorityRequestDigest(input);
       const replay = this.outcome(mission, input.intentId, "promote", digest);
       if (replay) return this.publicPromotionResult(replay.result);
       const pending = this.operation(mission, input.intentId, "promote", digest);
@@ -445,18 +448,28 @@ export class MissionAuthority {
     let snapshot = mission;
     let events: MissionEventRecord[] = [];
     if (interruptedRuns.length > 0) {
+      // A run operation without a durable outcome is only interrupted while the mission is in
+      // a state the run could have left behind: queued/awaiting_approval (claim before start) or
+      // running/paused/blocked (mid-flight). A staged result, a terminal status, and a run still
+      // owned by a live runner in this process all remain responsible for their own outcome.
+      const staged = mission.status === "ready_for_review" && !mission.activeRunId && mission.currentWorkspace !== undefined && mission.currentChangeSnapshot !== undefined;
+      const open = ["queued", "awaiting_approval", "running", "paused", "blocked"].includes(mission.status);
       const runId = interruptedRuns[0][1].runId;
-      const reconciled = this.reconcileInterruptedRun(snapshot, runId);
-      snapshot = reconciled.snapshot;
-      events = reconciled.events;
-      if (!snapshot) throw new Error(`Mission ${missionId} was interrupted before its run became durable and cannot be reconciled automatically.`);
-      for (const [intentId, operation] of interruptedRuns) {
-        snapshot = this.withOperation(snapshot, intentId, { operation: "run", requestDigest: operation.requestDigest, state: "interrupted", runId: operation.runId });
+      const live = this.activeRuns.get(missionId)?.runId === runId;
+      if (!staged && open && !live) {
+        const reconciled = this.reconcileInterruptedRun(snapshot, runId);
+        if (!reconciled.snapshot) throw new Error(`Mission ${missionId} was interrupted before its run became durable and cannot be reconciled automatically.`);
+        snapshot = reconciled.snapshot;
+        events = reconciled.events;
+        for (const [intentId, operation] of interruptedRuns) {
+          snapshot = this.withOperation(snapshot, intentId, { operation: "run", requestDigest: operation.requestDigest, state: "interrupted", runId: operation.runId });
+        }
       }
     }
     for (const [intentId, operation] of expirablePromotions) {
       snapshot = this.withOperation(snapshot, intentId, { operation: "promote", requestDigest: operation.requestDigest, state: "expired", reviewerId: operation.reviewerId, approvalNonce: operation.approvalNonce, approvalExpiresAt: operation.approvalExpiresAt });
     }
+    if (snapshot === mission) return;
     await this.options.missionStore.save(snapshot, events);
   }
 
@@ -501,7 +514,7 @@ export class MissionAuthority {
   }
 }
 
-function requestDigest(value: unknown): string {
+export function authorityRequestDigest(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 

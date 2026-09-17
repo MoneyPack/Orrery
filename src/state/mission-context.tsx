@@ -185,13 +185,17 @@ const MIGRATIONS: Record<number, (data: { missions: unknown[] }) => { missions: 
   1: (data) => data,
 };
 
-function migratePersisted(parsed: { version: number; missions: unknown[] }): { missions: unknown[] } {
-  if (parsed.version > CURRENT_VERSION) {
-    throw new Error(`Persisted mission state version ${parsed.version} is newer than this build understands (${CURRENT_VERSION}).`);
+function migratePersisted(
+  parsed: { version: number; missions: unknown[] },
+  migrations: Record<number, (data: { missions: unknown[] }) => { missions: unknown[] }> = MIGRATIONS,
+  currentVersion = CURRENT_VERSION,
+): { missions: unknown[] } {
+  if (parsed.version > currentVersion) {
+    throw new Error(`Persisted mission state version ${parsed.version} is newer than this build understands (${currentVersion}).`);
   }
   let data: { missions: unknown[] } = { missions: parsed.missions };
-  for (let version = parsed.version; version <= CURRENT_VERSION; version += 1) {
-    const migrate = MIGRATIONS[version];
+  for (let version = parsed.version; version <= currentVersion; version += 1) {
+    const migrate = migrations[version];
     if (!migrate) {
       throw new Error(`Persisted mission state version ${parsed.version} requires a migration this build does not provide (stopped at version ${version}).`);
     }
@@ -199,6 +203,9 @@ function migratePersisted(parsed: { version: number; missions: unknown[] }): { m
   }
   return data;
 }
+
+// Exported for tests that prove the migration walker works before any real v2 schema exists.
+export const __testing = { migratePersisted };
 
 function quarantineCorruptState(storage: Storage) {
   try {
@@ -254,10 +261,14 @@ export function MissionProvider({
   const [state, dispatch] = useReducer(reducer, storage, loadState);
   const activeRuns = useRef(new Map<string, ActiveRun>());
   // Mirror for async loops (start/cancel/resolveCapability) that need current state outside
-  // render. Assigning during render is the accepted pattern here; the reducer is only ever
-  // advanced through dispatch, never invoked manually.
+  // render; assign during render (the accepted pattern here) and immediately before each
+  // dispatch so a same-tick start-then-cancel observes the pending transition.
   const stateRef = useRef(state);
   stateRef.current = state;
+  const dispatchTracked = (action: AppAction) => {
+    stateRef.current = reducer(stateRef.current, action);
+    dispatch(action);
+  };
   // Snapshot of what storage holds: the initializer reads storage synchronously, so the first
   // persistence pass would only echo the load and is skipped. When the payload was corrupt,
   // loadState quarantines it and storage no longer matches state, so no write happens either.
@@ -288,7 +299,9 @@ export function MissionProvider({
   // Recover runs that were active when the app last reloaded. loadState stays side-effect
   // free; the interruption is a pure reducer transition, persisted by the effect above.
   useEffect(() => {
-    dispatch({ type: "recover_interrupted" });
+    dispatchTracked({ type: "recover_interrupted" });
+    // dispatchTracked is recreated each render but is only needed once at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => () => {
@@ -296,9 +309,9 @@ export function MissionProvider({
     activeRuns.current.clear();
   }, []);
 
-  const reportRuntimeError = (message?: string) => dispatch({ type: "runtime_error", message });
+  const reportRuntimeError = (message?: string) => dispatchTracked({ type: "runtime_error", message });
   const actOnMission = (missionId: string, action: MissionAction) =>
-    dispatch({ type: "mission", missionId, action });
+    dispatchTracked({ type: "mission", missionId, action });
 
   const start = async (missionId: string) => {
     if (activeRuns.current.has(missionId)) return;
@@ -323,6 +336,7 @@ export function MissionProvider({
       plan: mission.plan,
       planRevisionId: mission.plan.id,
     });
+    actOnMission(missionId, { type: "start", workspaceId, runId: run.runId });
     activeRuns.current.set(missionId, {
       run,
       nextSignalSequence: 1,
@@ -332,8 +346,8 @@ export function MissionProvider({
     try {
       for await (const signal of run.signals) {
         const active = activeRuns.current.get(missionId);
+        if (!active) return; // Cancelled before this loop observed the run.
         if (
-          !active ||
           active.run.runId !== signal.runId ||
           signal.sequence !== active.nextSignalSequence
         ) continue;
@@ -403,7 +417,7 @@ export function MissionProvider({
 
   const value: MissionContextValue = {
     ...state,
-    create: (input) => dispatch({ type: "create", input }),
+    create: (input) => dispatchTracked({ type: "create", input }),
     updatePlan: (missionId, plan) => actOnMission(missionId, { type: "update_plan", plan }),
     approvePlan: (missionId) => actOnMission(missionId, { type: "approve_plan" }),
     start,
@@ -432,7 +446,7 @@ export function MissionProvider({
       }
       persistedRef.current = [];
       skipNextPersistRef.current = true;
-      dispatch({ type: "reset" });
+      dispatchTracked({ type: "reset" });
     },
   };
 

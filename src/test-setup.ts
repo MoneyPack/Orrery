@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vitest } from "vitest";
+
+// Component and state tests drive real timers (fixture-run async loops, axe.run on a mounted
+// jsdom tree) and share the machine with heavier daemon/git suites. The repo already scales
+// readiness budgets with ORRERY_TEST_TIMEOUT_SCALE; apply the same scale to the per-test
+// timeout so a loaded machine reports slow-but-correct as green instead of flaky red.
+const timeoutScale = Math.max(1, Number(process.env.ORRERY_TEST_TIMEOUT_SCALE ?? 1) || 1);
+vitest.setConfig({ testTimeout: 5_000 * timeoutScale, hookTimeout: 10_000 * timeoutScale });
 
 const storage = new Map<string, string>();
 const localStorageMock: Storage = {

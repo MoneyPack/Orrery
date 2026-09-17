@@ -42,7 +42,7 @@ const changes: ChangeSnapshot = {
 };
 const contentDigestFor = (mission: MissionSnapshot) => digestReviewContent({ changes: changes.files, evidence: mission.evidence.filter((item) => item.planRevisionId === mission.plan.id) });
 
-function setup(now: () => string = () => "2026-08-28T11:00:00.000Z") {
+function setup(now: () => string = () => "2026-08-28T11:00:00.000Z", approvalKey?: string) {
   const snapshots = new Map<string, MissionSnapshot>();
   const records = new Map<string, MissionEventRecord[]>();
   const listeners = new Map<string, Set<(event: MissionEventRecord) => void>>();
@@ -111,6 +111,7 @@ function setup(now: () => string = () => "2026-08-28T11:00:00.000Z") {
   const approvals = new TrustedApprovalService({
     now,
     id: () => `approval-${++nextId}`,
+    ...(approvalKey ? { approvalKey } : {}),
   });
   const authority = new MissionAuthority({
     missionStore,
@@ -120,7 +121,7 @@ function setup(now: () => string = () => "2026-08-28T11:00:00.000Z") {
     promotionService,
     workspaceService,
     verificationCommandResolver: async () => ({ executable: "npm", args: ["test"] }),
-    promotionApprovalVerifier: new PinnedApprovalVerifier(approvals.publicKey, { now }),
+    promotionApprovalVerifier: new PinnedApprovalVerifier(approvals.approvalKey, { now }),
     now,
     id: () => `generated-${++nextId}`,
   });
@@ -174,7 +175,7 @@ describe("MissionAuthority", () => {
       approvalCapability: approval, contentDigest,
     });
 
-    expect(context.preparePromotion).toHaveBeenCalledWith(expect.objectContaining({ reviewerId: approvalPrincipal(context.approvals.publicKey) }));
+    expect(context.preparePromotion).toHaveBeenCalledWith(expect.objectContaining({ reviewerId: approvalPrincipal(context.approvals.approvalKey) }));
     await expect(context.authority.promote({
       intentId: "replay-capability",
       missionId: ready.id,
@@ -505,7 +506,7 @@ describe("MissionAuthority", () => {
       workspace: ready.currentWorkspace,
       planRevisionId: ready.plan.id,
       changeSnapshot: changes,
-      reviewerId: approvalPrincipal(context.approvals.publicKey),
+      reviewerId: approvalPrincipal(context.approvals.approvalKey),
       decision: "accepted",
     }));
   });
@@ -520,7 +521,7 @@ describe("MissionAuthority", () => {
 
     await expect(context.authority.promote(intent)).rejects.toThrow("simulated crash");
     expect(context.snapshots.get(ready.id)!.operations![intent.intentId].state).toBe("in_progress");
-    const restarted = setup();
+    const restarted = setup(() => "2026-08-28T11:00:00.000Z", context.approvals.approvalKey);
     restarted.snapshots.set(ready.id, structuredClone(context.snapshots.get(ready.id)!));
     restarted.reconcilePromotion.mockResolvedValueOnce({ status: "pending" });
     const result = await restarted.authority.promote(intent);
@@ -541,7 +542,7 @@ describe("MissionAuthority", () => {
     await expect(context.authority.promote(intent)).rejects.toThrow("simulated crash");
 
     now = "2026-08-28T11:01:00.000Z";
-    const restarted = setup(() => now);
+    const restarted = setup(() => now, context.approvals.approvalKey);
     restarted.snapshots.set(ready.id, structuredClone(context.snapshots.get(ready.id)!));
 
     await expect(restarted.authority.promote(intent)).rejects.toThrow(/approval expired/i);
@@ -564,7 +565,7 @@ describe("MissionAuthority", () => {
 
     const rejected = await context.authority.promote(intent);
 
-    expect(rejected).toMatchObject({ mission: { status: "rejected" }, result: { status: "rejected" }, reviewerId: approvalPrincipal(context.approvals.publicKey) });
+    expect(rejected).toMatchObject({ mission: { status: "rejected" }, result: { status: "rejected" }, reviewerId: approvalPrincipal(context.approvals.approvalKey) });
     expect(context.preparePromotion).toHaveBeenCalledWith(expect.objectContaining({ decision: "rejected", changeSnapshot: changes }));
     expect(context.commitPromotion).not.toHaveBeenCalled();
     expect(context.snapshots.get(ready.id)!.operations![intent.intentId]).toMatchObject({ state: "committed", result: { result: { status: "rejected" } } });

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MissionEventRecord, MissionSnapshot } from "./authority-types";
 import { FileMissionEventStore } from "./file-event-store";
 import { FileMissionStore } from "./file-mission-store";
+import { appendAndFlush, assertSnapshotConsistent, pathsFor, type TransactionJournal } from "./durable-store-files";
 
 const directories: string[] = [];
 const execFileAsync = promisify(execFile);
@@ -65,6 +66,37 @@ function mission(id: string, lastEventSequence = 0): MissionSnapshot {
     evidence: [],
   };
   return { ...value, repositoryId: "repository-1", fingerprint: "sha256:fingerprint", lastEventSequence, payloadVersion: 1 };
+}
+
+function jsonl(records: readonly MissionEventRecord[]) {
+  return records.map((record) => `${JSON.stringify(record)}\n`).join("");
+}
+
+function appendJournal(missionId: string, sequences: number[]): TransactionJournal {
+  const snapshot = { ...mission(missionId, sequences.at(-1) ?? 0), events: sequences.map((sequence) => event(missionId, sequence)) };
+  return { payloadVersion: 1, missionId, snapshot, events: snapshot.events as MissionEventRecord[] };
+}
+
+async function writeFixtureJournal(directory: string, journal: TransactionJournal) {
+  await mkdir(join(pathsFor(directory).transactions), { recursive: true });
+  await writeFile(join(pathsFor(directory).transactions, `${journal.missionId}.json`), `${JSON.stringify(journal)}\n`, "utf8");
+}
+
+async function seedEventLog(directory: string, missionId: string, records: readonly MissionEventRecord[], tornTail = "") {
+  await mkdir(join(pathsFor(directory).events), { recursive: true });
+  if (tornTail) await writeFile(join(pathsFor(directory).events, `${missionId}.jsonl`), `${jsonl(records)}${tornTail}`, "utf8");
+  else await appendAndFlush(join(pathsFor(directory).events, `${missionId}.jsonl`), records);
+}
+
+async function expectExactlyOnceCommit(directory: string, journal: TransactionJournal) {
+  const missions = new FileMissionStore(directory);
+  const events = new FileMissionEventStore(directory);
+  expect((await missions.load(journal.missionId))!.lastEventSequence).toBe(journal.snapshot.lastEventSequence);
+  const sequences = (await events.readAfter(journal.missionId, 0)).map((record) => record.sequence);
+  expect(sequences).toEqual(journal.snapshot.events.map((record) => (record as MissionEventRecord).sequence));
+  expect(new Set(sequences).size).toBe(sequences.length);
+  await expect(readFile(join(pathsFor(directory).transactions, `${journal.missionId}.json`), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  await assertSnapshotConsistent(directory, (await missions.load(journal.missionId))!);
 }
 
 function event(missionId: string, sequence: number): MissionEventRecord {
@@ -253,6 +285,90 @@ describe("filesystem mission persistence", { timeout: 30_000 }, () => {
     expect((await recovered.load("mission-a"))!.lastEventSequence).toBe(1);
     expect((await new FileMissionEventStore(directory).readAfter("mission-a", 0))).toEqual([nextEvent]);
     await expect(readFile(join(directory, "transactions", "mission-a.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("completes a journal intact from a crash before any completion step ran", async () => {
+    const directory = await stateDirectory();
+    await mkdir(join(pathsFor(directory).missions), { recursive: true });
+    await writeFixture(join(pathsFor(directory).missions, "mission-a.json"), `${JSON.stringify(mission("mission-a"))}\n`);
+    const journal = appendJournal("mission-a", [1, 2]);
+    await writeFixtureJournal(directory, journal);
+
+    await expectExactlyOnceCommit(directory, journal);
+  });
+
+  it("does not duplicate events already durable from a crash before the snapshot write", async () => {
+    const directory = await stateDirectory();
+    const journal = appendJournal("mission-a", [1, 2]);
+    await mkdir(join(pathsFor(directory).missions), { recursive: true });
+    await writeFixture(join(pathsFor(directory).missions, "mission-a.json"), `${JSON.stringify(mission("mission-a"))}\n`);
+    // The event log is flushed before the snapshot, so this partial prefix is exactly what a
+    // crash between those two steps leaves behind.
+    await seedEventLog(directory, "mission-a", journal.events.slice(0, 1));
+    await writeFixtureJournal(directory, journal);
+
+    await expectExactlyOnceCommit(directory, journal);
+
+    // The event log may even already hold every journaled event while the snapshot still
+    // lags behind; recovery must not re-append any of them.
+    const fullyMerged = await stateDirectory();
+    const secondJournal = appendJournal("mission-a", [1, 2]);
+    await mkdir(join(pathsFor(fullyMerged).missions), { recursive: true });
+    await writeFixture(join(pathsFor(fullyMerged).missions, "mission-a.json"), `${JSON.stringify(mission("mission-a"))}\n`);
+    await seedEventLog(fullyMerged, "mission-a", secondJournal.events);
+    await writeFixtureJournal(fullyMerged, secondJournal);
+
+    await expectExactlyOnceCommit(fullyMerged, secondJournal);
+  });
+
+  it("treats a torn final event line as not yet durable", async () => {
+    const directory = await stateDirectory();
+    const journal = appendJournal("mission-a", [1, 2]);
+    await mkdir(join(pathsFor(directory).missions), { recursive: true });
+    await writeFixture(join(pathsFor(directory).missions, "mission-a.json"), `${JSON.stringify(mission("mission-a"))}\n`);
+    // A crash mid-append leaves a torn tail after the complete lines.
+    await seedEventLog(directory, "mission-a", journal.events.slice(0, 1), JSON.stringify(journal.events[1]).slice(0, 20));
+    await writeFixtureJournal(directory, journal);
+
+    await expectExactlyOnceCommit(directory, journal);
+  });
+
+  it("removes a stale journal whose snapshot already carries the commit", async () => {
+    const directory = await stateDirectory();
+    const journal = appendJournal("mission-a", [1, 2]);
+    await mkdir(join(pathsFor(directory).missions), { recursive: true });
+    await writeFixture(join(pathsFor(directory).missions, "mission-a.json"), `${JSON.stringify(journal.snapshot)}\n`);
+    await seedEventLog(directory, "mission-a", journal.events);
+    await writeFixtureJournal(directory, journal);
+
+    await expectExactlyOnceCommit(directory, journal);
+  });
+
+  it("refuses a snapshot that cannot be explained by the journal", async () => {
+    const directory = await stateDirectory();
+    await mkdir(join(pathsFor(directory).missions), { recursive: true });
+    await writeFixture(join(pathsFor(directory).missions, "mission-a.json"), `${JSON.stringify(mission("mission-a", 3))}\n`);
+    await writeFixtureJournal(directory, appendJournal("mission-a", [1, 2]));
+
+    await expect(new FileMissionStore(directory).load("mission-a")).rejects.toThrow(/journal/i);
+  });
+
+  it("completes a retained-events journal from a crash before or after the event rewrite", async () => {
+    for (const rewritten of [false, true]) {
+      const directory = await stateDirectory();
+      await mkdir(join(pathsFor(directory).missions), { recursive: true });
+      await writeFixture(join(pathsFor(directory).missions, "mission-retained.json"), `${JSON.stringify(mission("mission-retained", 2))}\n`);
+      const kept = [event("mission-retained", 3), event("mission-retained", 4)];
+      const snapshot = { ...mission("mission-retained", 4), firstEventSequence: 3, events: kept };
+      await writeFixtureJournal(directory, { payloadVersion: 1, missionId: "mission-retained", snapshot, events: kept, retainedEvents: kept });
+      if (rewritten) await seedEventLog(directory, "mission-retained", kept);
+      else await seedEventLog(directory, "mission-retained", [event("mission-retained", 1), event("mission-retained", 2)]);
+
+      const missions = new FileMissionStore(directory);
+      expect((await missions.load("mission-retained"))!).toMatchObject({ firstEventSequence: 3, lastEventSequence: 4 });
+      expect((await new FileMissionEventStore(directory).readAfter("mission-retained", 0)).map((record) => record.sequence)).toEqual([3, 4]);
+      await expect(readFile(join(pathsFor(directory).transactions, "mission-retained.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    }
   });
 
   it("refuses unexplained snapshot/event mismatch and malformed journals", async () => {

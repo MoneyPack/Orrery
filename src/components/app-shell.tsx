@@ -1,5 +1,5 @@
 import { Moon, Planet, Sun } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMissions } from "../state/mission-context";
 import { MissionList } from "./mission-list";
 import { NewMissionDialog } from "./new-mission-dialog";
@@ -29,8 +29,17 @@ export function AppShell() {
 
   const closeDialog = () => {
     setDialogOpen(false);
-    window.setTimeout(() => dialogTrigger.current?.focus(), 0);
   };
+
+  // Restore focus to the element that opened the dialog, synchronously after the dialog
+  // unmounts (before paint), rather than racing a setTimeout(0) against the next frame.
+  useLayoutEffect(() => {
+    if (!dialogOpen && dialogTrigger.current) {
+      const trigger = dialogTrigger.current;
+      dialogTrigger.current = null;
+      trigger.focus();
+    }
+  }, [dialogOpen]);
 
   return (
     <div className="app-shell">

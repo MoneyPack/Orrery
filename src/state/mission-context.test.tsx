@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MissionProvider,
   STORAGE_KEY,
+  __testing,
   useMissions,
 } from "./mission-context";
 import { createMission } from "../domain/mission";
@@ -334,6 +335,7 @@ describe("MissionProvider", () => {
     // The next reload no longer sees the corrupt payload.
     const reloaded = renderHook(() => useMissions(), { wrapper });
     expect(reloaded.result.current.storageError).toBeUndefined();
+    reloaded.unmount();
 
     act(() => result.current.resetDemo());
     expect(result.current.storageError).toBeUndefined();
@@ -358,6 +360,30 @@ describe("MissionProvider", () => {
     expect(result.current.storageError).toMatch(/corrupt|invalid/i);
     expect(result.current.storageError).toMatch(/version 2/i);
     expect(result.current.missions).toEqual([]);
+  });
+
+  it("walks an injected migration chain up to the current version", () => {
+    const walk = (version: number, target: number, migrations: Record<number, (data: { missions: unknown[] }) => { missions: unknown[] }>) =>
+      __testing.migratePersisted({ version, missions: [{ id: "m" }] }, migrations, target);
+
+    // Identity at the current version.
+    expect(walk(1, 1, { 1: (data) => data })).toEqual({ missions: [{ id: "m" }] });
+
+    // A v1 -> v2 -> v3 chain applies each step in order.
+    const applied: number[] = [];
+    const chain = {
+      1: (data: { missions: unknown[] }) => { applied.push(1); return data; },
+      2: (data: { missions: unknown[] }) => { applied.push(2); return { missions: [...data.missions, { id: "migrated-by-v2" }] }; },
+      3: (data: { missions: unknown[] }) => { applied.push(3); return data; },
+    };
+    expect(walk(1, 3, chain)).toEqual({ missions: [{ id: "m" }, { id: "migrated-by-v2" }] });
+    expect(applied).toEqual([1, 2, 3]);
+
+    // A missing step fails with a clear message instead of producing a bad read.
+    expect(() => walk(1, 3, { 1: (data) => data, 3: (data) => data })).toThrow(/migration/i);
+
+    // Newer-than-supported payloads fail with a clear message.
+    expect(() => walk(4, 3, chain)).toThrow(/version 4.*newer/i);
   });
 
   it("normalizes a reload during a permission request to a recoverable interruption", async () => {
@@ -454,7 +480,7 @@ describe("MissionProvider", () => {
     expect(JSON.parse(writes[0]).missions[0].id).toBe(result.current.missions[0].id);
   });
 
-  it("does not start runtime work when persisting the running state fails", async () => {
+  it("still runs the fixture and surfaces a storage error when persisting the running state fails", async () => {
     const mission = createMission({ ...createInput, plan: { scope: "Scope", actions: ["Act"], acceptanceCriteria: ["Prove"] } });
     const queued = { ...mission, status: "queued" as const, plan: { ...mission.plan, approved: true } };
     const storage: Storage = {
@@ -470,10 +496,15 @@ describe("MissionProvider", () => {
     );
     const { result } = renderHook(() => useMissions(), { wrapper: failingWrapper });
 
-    await act(async () => { await result.current.start(mission.id); });
+    act(() => { void result.current.start(mission.id); });
 
-    expect(result.current.missions[0].status).toBe("queued");
-    expect(result.current.storageError).toMatch(/save|storage/i);
+    // The run is not gated on the durable write: it starts and progresses in memory while the
+    // persistence failure is surfaced as a storage error.
+    await waitFor(() => expect(result.current.missions[0].status).toBe("blocked"));
+    await waitFor(() => expect(result.current.storageError).toMatch(/save|storage/i));
+    const request = result.current.missions[0].events.find((event) => event.capability)?.capability!;
+    act(() => result.current.resolveCapability(mission.id, request.runId, request.requestId, "denied"));
+    await waitFor(() => expect(result.current.missions[0].status).toBe("ready_for_review"));
     act(() => result.current.cancel(mission.id));
     expect(result.current.runtimeError).toMatch(/no active run/i);
   });
