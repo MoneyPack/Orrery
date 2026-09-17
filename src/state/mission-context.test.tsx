@@ -314,16 +314,50 @@ describe("MissionProvider", () => {
     expect(new Set(result.current.missions[0].events.map((event) => event.runId)).size).toBe(2);
   });
 
-  it("exposes corrupt persisted state without overwriting it and can recover", () => {
+  it("quarantines corrupt persisted state aside, surfaces the error, and recovers", () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, missions: [{ id: "broken" }] }));
     const original = window.localStorage.getItem(STORAGE_KEY);
     const { result } = renderHook(() => useMissions(), { wrapper });
 
     expect(result.current.storageError).toMatch(/corrupt|invalid/i);
     expect(result.current.missions).toEqual([]);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(original);
+    // The bad payload is moved aside, not left in place to loop the same error on reload.
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    const backups: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)!;
+      if (key.startsWith(`${STORAGE_KEY}.corrupt.`)) backups.push(key);
+    }
+    expect(backups).toHaveLength(1);
+    expect(window.localStorage.getItem(backups[0])).toBe(original);
+
+    // The next reload no longer sees the corrupt payload.
+    const reloaded = renderHook(() => useMissions(), { wrapper });
+    expect(reloaded.result.current.storageError).toBeUndefined();
+
     act(() => result.current.resetDemo());
     expect(result.current.storageError).toBeUndefined();
+    // Reset also removes stale corrupt backups.
+    expect(window.localStorage.getItem(backups[0])).toBeNull();
+  });
+
+  it("loads a v1 payload untouched", () => {
+    const mission = createMission({ ...createInput, plan: { scope: "Scope", actions: ["Act"], acceptanceCriteria: ["Prove"] } });
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, missions: [mission] }));
+    const { result } = renderHook(() => useMissions(), { wrapper });
+    expect(result.current.storageError).toBeUndefined();
+    expect(result.current.missions[0].id).toBe(mission.id);
+    // No active run, so no recovery rewrite happens.
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify({ version: 1, missions: [mission] }));
+  });
+
+  it("rejects a v2 payload with a clear message until a migration exists", () => {
+    const mission = createMission({ ...createInput, plan: { scope: "Scope", actions: ["Act"], acceptanceCriteria: ["Prove"] } });
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, missions: [mission] }));
+    const { result } = renderHook(() => useMissions(), { wrapper });
+    expect(result.current.storageError).toMatch(/corrupt|invalid/i);
+    expect(result.current.storageError).toMatch(/version 2/i);
+    expect(result.current.missions).toEqual([]);
   });
 
   it("normalizes a reload during a permission request to a recoverable interruption", async () => {
@@ -375,7 +409,7 @@ describe("MissionProvider", () => {
     expect(restored.result.current.missions).toEqual([]);
   });
 
-  it("does not expose a mission transition when its durable write fails", async () => {
+  it("surfaces a storage error and keeps the in-memory transition when the durable write fails", async () => {
     const storage: Storage = {
       length: 0,
       clear: vi.fn(),
@@ -393,11 +427,13 @@ describe("MissionProvider", () => {
     act(() => result.current.create(createInput));
 
     await waitFor(() => expect(result.current.storageError).toMatch(/save|storage/i));
-    expect(result.current.missions).toEqual([]);
+    // React state is authoritative: the transition is applied in memory and the failed
+    // durable write is surfaced instead of silently rolling the state back.
+    expect(result.current.missions).toHaveLength(1);
     expect(storage.setItem).toHaveBeenCalledTimes(1);
   });
 
-  it("persists each transition once before exposing it", () => {
+  it("persists each transition exactly once", () => {
     const writes: string[] = [];
     const storage: Storage = {
       length: 0,

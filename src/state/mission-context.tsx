@@ -23,7 +23,7 @@ type AppAction =
   | { type: "mission"; missionId: string; action: MissionAction }
   | { type: "runtime_error"; message?: string }
   | { type: "storage_error"; message?: string }
-  | { type: "commit"; state: AppState }
+  | { type: "recover_interrupted" }
   | { type: "reset" };
 
 interface MissionContextValue extends AppState {
@@ -40,10 +40,14 @@ interface MissionContextValue extends AppState {
 const MissionContext = createContext<MissionContextValue | null>(null);
 
 function reducer(state: AppState, action: AppAction): AppState {
-  if (action.type === "commit") return action.state;
   if (action.type === "reset") return { missions: [] };
   if (action.type === "runtime_error") return { ...state, runtimeError: action.message };
   if (action.type === "storage_error") return { ...state, storageError: action.message };
+  if (action.type === "recover_interrupted") {
+    const missions = state.missions.map(interruptActiveMission);
+    if (missions.every((mission, index) => mission === state.missions[index])) return state;
+    return { ...state, missions };
+  }
   try {
     if (action.type === "create") {
       return { ...state, runtimeError: undefined, missions: [createMission(action.input), ...state.missions] };
@@ -174,24 +178,57 @@ function interruptActiveMission(mission: Mission): Mission {
   };
 }
 
+const CURRENT_VERSION = 1;
+// Persisted payloads carry a `version` field. Future schema changes bump the field, never
+// STORAGE_KEY, so older builds fail gracefully with a clear error instead of misreading data.
+const MIGRATIONS: Record<number, (data: { missions: unknown[] }) => { missions: unknown[] }> = {
+  1: (data) => data,
+};
+
+function migratePersisted(parsed: { version: number; missions: unknown[] }): { missions: unknown[] } {
+  if (parsed.version > CURRENT_VERSION) {
+    throw new Error(`Persisted mission state version ${parsed.version} is newer than this build understands (${CURRENT_VERSION}).`);
+  }
+  let data: { missions: unknown[] } = { missions: parsed.missions };
+  for (let version = parsed.version; version <= CURRENT_VERSION; version += 1) {
+    const migrate = MIGRATIONS[version];
+    if (!migrate) {
+      throw new Error(`Persisted mission state version ${parsed.version} requires a migration this build does not provide (stopped at version ${version}).`);
+    }
+    data = migrate(data);
+  }
+  return data;
+}
+
+function quarantineCorruptState(storage: Storage) {
+  try {
+    const corrupt = storage.getItem(STORAGE_KEY);
+    if (corrupt === null) return;
+    storage.setItem(`${STORAGE_KEY}.corrupt.${new Date().toISOString()}`, corrupt);
+    storage.removeItem(STORAGE_KEY);
+  } catch {
+    // Quarantine is best-effort; the surfaced storage error is the primary signal.
+  }
+}
+
 function loadState(storage: Storage): AppState {
   const serialized = storage.getItem(STORAGE_KEY);
   if (!serialized) return { missions: [] };
   try {
     if (serialized.length > MAX_STORAGE_BYTES) throw new Error("Persisted state exceeds the size limit.");
     const parsed: unknown = JSON.parse(serialized);
-    if (!isRecord(parsed) || !hasOnly(parsed, ["version", "missions"]) || parsed.version !== 1 ||
-      !Array.isArray(parsed.missions) || parsed.missions.length > MAX_MISSIONS || !parsed.missions.every(isValidMission) ||
-      new Set(parsed.missions.map((mission) => mission.id)).size !== parsed.missions.length) {
+    if (!isRecord(parsed) || !hasOnly(parsed, ["version", "missions"]) || !isInteger(parsed.version) ||
+      Number(parsed.version) < 1 || !Array.isArray(parsed.missions)) {
       throw new Error("Invalid persisted mission schema or event log integrity.");
     }
-    const persistedMissions = parsed.missions as Mission[];
-    const missions = persistedMissions.map(interruptActiveMission);
-    if (missions.some((mission, index) => mission !== persistedMissions[index])) {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, missions }));
+    const migrated = migratePersisted(parsed as { version: number; missions: unknown[] });
+    if (migrated.missions.length > MAX_MISSIONS || !migrated.missions.every(isValidMission) ||
+      new Set(migrated.missions.map((mission) => mission.id)).size !== migrated.missions.length) {
+      throw new Error("Invalid persisted mission schema or event log integrity.");
     }
-    return { missions };
+    return { missions: migrated.missions as Mission[] };
   } catch (error) {
+    quarantineCorruptState(storage);
     return {
       missions: [],
       storageError: `Stored mission data is corrupt or invalid. Reset local data to recover. ${error instanceof Error ? error.message : ""}`.trim(),
@@ -216,46 +253,56 @@ export function MissionProvider({
 }) {
   const [state, dispatch] = useReducer(reducer, storage, loadState);
   const activeRuns = useRef(new Map<string, ActiveRun>());
+  // Mirror for async loops (start/cancel/resolveCapability) that need current state outside
+  // render. Assigning during render is the accepted pattern here; the reducer is only ever
+  // advanced through dispatch, never invoked manually.
   const stateRef = useRef(state);
   stateRef.current = state;
-  const missionsRef = useRef(state.missions);
-  missionsRef.current = state.missions;
+  // Snapshot of what storage holds: the initializer reads storage synchronously, so the first
+  // persistence pass would only echo the load and is skipped. When the payload was corrupt,
+  // loadState quarantines it and storage no longer matches state, so no write happens either.
+  const persistedRef = useRef(state.missions);
+  // Set by resetDemo so the reset transition clears storage instead of writing an empty payload.
+  const skipNextPersistRef = useRef(false);
+
+  useEffect(() => {
+    if (persistedRef.current === state.missions) return;
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      persistedRef.current = state.missions;
+      return;
+    }
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify({ version: CURRENT_VERSION, missions: state.missions }));
+      persistedRef.current = state.missions;
+    } catch (error) {
+      dispatch({
+        type: "storage_error",
+        message: `Mission state could not be saved to local storage. ${
+          error instanceof Error ? error.message : "Storage is unavailable."
+        }`,
+      });
+    }
+  }, [state.missions, storage]);
+
+  // Recover runs that were active when the app last reloaded. loadState stays side-effect
+  // free; the interruption is a pure reducer transition, persisted by the effect above.
+  useEffect(() => {
+    dispatch({ type: "recover_interrupted" });
+  }, []);
 
   useEffect(() => () => {
     for (const active of activeRuns.current.values()) active.run.cancel();
     activeRuns.current.clear();
   }, []);
 
-  const commit = (action: AppAction) => {
-    const next = reducer(stateRef.current, action);
-    if (next.missions !== stateRef.current.missions) {
-      try {
-        storage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, missions: next.missions }));
-      } catch (error) {
-        const failed = reducer(stateRef.current, {
-          type: "storage_error",
-          message: `Mission state could not be saved to local storage. ${
-            error instanceof Error ? error.message : "Storage is unavailable."
-          }`,
-        });
-        stateRef.current = failed;
-        dispatch({ type: "commit", state: failed });
-        return false;
-      }
-    }
-    stateRef.current = next;
-    missionsRef.current = next.missions;
-    dispatch({ type: "commit", state: next });
-    return true;
-  };
-
-  const reportRuntimeError = (message?: string) => commit({ type: "runtime_error", message });
+  const reportRuntimeError = (message?: string) => dispatch({ type: "runtime_error", message });
   const actOnMission = (missionId: string, action: MissionAction) =>
-    commit({ type: "mission", missionId, action });
+    dispatch({ type: "mission", missionId, action });
 
   const start = async (missionId: string) => {
     if (activeRuns.current.has(missionId)) return;
-    const mission = missionsRef.current.find((item) => item.id === missionId);
+    const mission = stateRef.current.missions.find((item) => item.id === missionId);
     if (!mission || mission.status !== "queued") {
       reportRuntimeError(mission ? `Cannot start while mission is ${mission.status}.` : "Mission no longer exists.");
       return;
@@ -276,10 +323,6 @@ export function MissionProvider({
       plan: mission.plan,
       planRevisionId: mission.plan.id,
     });
-    if (!actOnMission(missionId, { type: "start", workspaceId, runId: run.runId })) {
-      run.cancel();
-      return;
-    }
     activeRuns.current.set(missionId, {
       run,
       nextSignalSequence: 1,
@@ -297,31 +340,18 @@ export function MissionProvider({
         active.nextSignalSequence += 1;
         const event = { ...signal.event, sequence: active.nextEventSequence };
         active.nextEventSequence += 1;
-        if (!actOnMission(missionId, { type: "append_event", runId: signal.runId, event })) {
-          run.cancel();
-          return;
-        }
+        actOnMission(missionId, { type: "append_event", runId: signal.runId, event });
         if (signal.type === "change") {
-          if (!actOnMission(missionId, { type: "observe_change", runId: signal.runId, change: signal.change })) {
-            run.cancel();
-            return;
-          }
+          actOnMission(missionId, { type: "observe_change", runId: signal.runId, change: signal.change });
         } else if (signal.type === "evidence") {
-          if (!actOnMission(missionId, {
+          actOnMission(missionId, {
             type: "record_evidence",
             runId: signal.runId,
             evidence: signal.evidence,
-          })) {
-            run.cancel();
-            return;
-          }
+          });
         } else if (signal.type === "complete") {
-          if (actOnMission(missionId, { type: "complete", runId: signal.runId, summary: signal.summary })) {
-            activeRuns.current.delete(missionId);
-          } else {
-            run.cancel();
-            return;
-          }
+          actOnMission(missionId, { type: "complete", runId: signal.runId, summary: signal.summary });
+          activeRuns.current.delete(missionId);
         }
       }
     } catch (error) {
@@ -339,7 +369,7 @@ export function MissionProvider({
   const cancel = (missionId: string) => {
     const active = activeRuns.current.get(missionId);
     if (!active) {
-      const interrupted = missionsRef.current.find((mission) => mission.id === missionId);
+      const interrupted = stateRef.current.missions.find((mission) => mission.id === missionId);
       if (interrupted?.status === "blocked" && !interrupted.activeRunId) {
         const runId = [...interrupted.events].reverse().find((event) => event.kind === "interruption")?.runId;
         if (runId) {
@@ -373,7 +403,7 @@ export function MissionProvider({
 
   const value: MissionContextValue = {
     ...state,
-    create: (input) => commit({ type: "create", input }),
+    create: (input) => dispatch({ type: "create", input }),
     updatePlan: (missionId, plan) => actOnMission(missionId, { type: "update_plan", plan }),
     approvePlan: (missionId) => actOnMission(missionId, { type: "approve_plan" }),
     start,
@@ -385,7 +415,7 @@ export function MissionProvider({
         return;
       }
       try {
-        if (!actOnMission(missionId, { type: "resolve_capability", runId, requestId, decision })) return;
+        actOnMission(missionId, { type: "resolve_capability", runId, requestId, decision });
         resolveFixtureCapability(runId, requestId, decision);
       } catch (error) {
         reportRuntimeError(error instanceof Error ? error.message : "Capability resolution failed.");
@@ -395,8 +425,14 @@ export function MissionProvider({
     resetDemo: () => {
       for (const active of activeRuns.current.values()) active.run.cancel();
       activeRuns.current.clear();
-      storage.removeItem(STORAGE_KEY);
-      commit({ type: "reset" });
+      // Drop the live payload plus any stale corrupt backups quarantined by loadState.
+      for (let index = storage.length - 1; index >= 0; index -= 1) {
+        const key = storage.key(index);
+        if (key && (key === STORAGE_KEY || key.startsWith(`${STORAGE_KEY}.corrupt.`))) storage.removeItem(key);
+      }
+      persistedRef.current = [];
+      skipNextPersistRef.current = true;
+      dispatch({ type: "reset" });
     },
   };
 

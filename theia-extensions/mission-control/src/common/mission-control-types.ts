@@ -59,6 +59,32 @@ export interface MissionControlState {
   readonly error?: string;
 }
 
+/**
+ * The desktop capability the Electron preload exposes as `window.orreryMissionControl`.
+ *
+ * This is the same flat surface as `MissionControlPublicApi`; the alias is kept because the
+ * browser adapters consume it under this name. Methods grouped by sensitivity (the full
+ * rationale lives on `MissionControlPublicApi` in `mission-control-contracts.ts`):
+ *
+ * - Missions — `intakeRepository`, `create`, `run`, `cancel`, `list`, `getSnapshot`,
+ *   `inspect`, `reviewAndPromote`: mission lifecycle and review. All guarded by Electron
+ *   main's trusted-window check; intake and review additionally run through the window-bound
+ *   request context because they raise native confirmations.
+ * - Intelligence — `getIntelligenceSettings`, `setIntelligenceSettings`,
+ *   `listIntelligenceMessages`, `sendIntelligenceMessage`, `clearIntelligenceThread`,
+ *   `getIntelligenceTurnStatus`, `cancelIntelligenceTurn`: chat settings, transcript, and
+ *   turn control. Credentials and endpoints never cross the bridge; the settings read returns
+ *   the redacted status. Sending a message is window-bound because a turn can raise native
+ *   tool confirmations; turn status/cancel authorize nothing.
+ * - MCP — `listMcpCatalog`, `registerMcpServer`, `removeMcpServer`, `setMcpToolDecision`,
+ *   `invokeMcpTool`, `listMcpActivity`: tool catalog and activity. Server commands, argument
+ *   vectors, and endpoint URLs stay in the main process; registration, standing decisions,
+ *   and invocation raise native confirmations and are window-bound.
+ *
+ * Enforcement does not live in this type: the exposed key set is pinned by the preload and
+ * packaging tests, and every channel's payload and sender frame are validated in
+ * `src/electron-main/mission-control-electron-main-contribution.ts`.
+ */
 export type DesktopMissionApi = MissionControlPublicApi;
 
 export interface MissionControlService {

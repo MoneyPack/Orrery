@@ -18,7 +18,8 @@
       "@orrery/mission-control-domain": ["packages/mission-control-domain/src/index.ts"],
       "@orrery/mission-kernel": ["packages/mission-kernel/src/index.ts"],
       "@orrery/mission-control-protocol": ["packages/mission-control-protocol/src/index.ts"],
-      "@orrery/mission-control-client": ["packages/mission-control-client/src/index.ts"]
+      "@orrery/mission-control-client": ["packages/mission-control-client/src/index.ts"],
+      "@orrery/electron-security-policy": ["packages/electron-security-policy/src/index.ts"]
     }
   },
   "include": [
@@ -33,6 +34,7 @@
       "packages/mission-control-daemon/src",
       "packages/mission-control-client/src",
       "packages/mission-control-tui/src",
+      "packages/electron-security-policy/src",
       "scripts/daemon-lifecycle.ts",
       "scripts/daemon-bootstrap.ts",
       "e2e"

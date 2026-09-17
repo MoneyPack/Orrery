@@ -1,3 +1,4 @@
+import { win32 as win32Path } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   createWindowOptions,
@@ -55,22 +56,26 @@ describe("Electron main security policy", () => {
       .toThrow("Electron development server must use a loopback HTTP URL");
   });
 
+  // Packaged builds ship on Windows (see electron-builder.config.cjs --win), and the packaged
+  // inputs (app.getAppPath(), import.meta.url) are native paths, so expectations are computed
+  // with the same win32 semantics the production code uses there. This keeps the assertions
+  // exact on every host OS instead of only passing when run on Windows.
   it("always uses the renderer under app.getAppPath when packaged", () => {
     expect(resolveRendererSource(true, "http://127.0.0.1:5173", "C:\\Program Files\\Orrery\\resources\\app.asar"))
       .toEqual({
         kind: "file",
-        value: "C:\\Program Files\\Orrery\\resources\\app.asar\\dist\\index.html",
+        value: win32Path.join("C:\\Program Files\\Orrery\\resources\\app.asar", "dist", "index.html"),
       });
   });
 
   it("resolves preload beside the built main entry", () => {
     expect(resolvePreloadPath("C:\\workspace\\dist-electron\\main.js"))
-      .toBe("C:\\workspace\\dist-electron\\preload.cjs");
+      .toBe(win32Path.join(win32Path.dirname("C:\\workspace\\dist-electron\\main.js"), "preload.cjs"));
   });
 
   it("resolves the managed daemon bundle beside the built main entry", () => {
     expect(resolveDaemonEntryPath("C:\\workspace\\dist-electron\\main.js"))
-      .toBe("C:\\workspace\\dist-electron\\resources\\mission-control-daemon.cjs");
+      .toBe(win32Path.join(win32Path.dirname("C:\\workspace\\dist-electron\\main.js"), "resources", "mission-control-daemon.cjs"));
   });
 
   it("delays application quit until daemon cleanup finishes", async () => {

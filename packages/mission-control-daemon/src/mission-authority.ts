@@ -104,7 +104,7 @@ export class MissionAuthority {
           const result: PublicRunMissionResult = { missionId: mission.id, runId: pending.runId, planRevisionId: input.planRevisionId, status: mission.status, mission: this.publicMission(mission), workspace: this.publicWorkspace(mission.currentWorkspace), changeSnapshot: mission.currentChangeSnapshot };
           return { promise: this.commitRun(mission, input.intentId, digest, result) };
         }
-        throw new Error("Mission run was interrupted before a terminal result was durable.");
+        throw new Error("Mission run was interrupted before a terminal result was durable; retry with a new intent ID to requeue the mission.");
       }
       if (mission.plan.id !== input.planRevisionId) throw new Error("Mission plan revision does not match the current plan.");
       if (active) throw new Error("Mission already has an active run.");
@@ -419,11 +419,79 @@ export class MissionAuthority {
 
   private serialize<T>(missionId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.mutationTails.get(missionId) ?? Promise.resolve();
-    const result = previous.then(operation, operation);
+    const result = previous.then(async () => {
+      await this.reconcileInterrupts(missionId);
+      return operation();
+    }, async () => {
+      await this.reconcileInterrupts(missionId);
+      return operation();
+    });
     const tail = result.then(() => undefined, () => undefined);
     this.mutationTails.set(missionId, tail);
     void tail.finally(() => { if (this.mutationTails.get(missionId) === tail) this.mutationTails.delete(missionId); });
     return result;
+  }
+
+  private async reconcileInterrupts(missionId: string): Promise<void> {
+    const mission = await this.options.missionStore.load(missionId);
+    if (!mission) return;
+    const operations = mission.operations ?? {};
+    const interruptedRuns = Object.entries(operations).filter((entry): entry is [string, Extract<MissionOperation, { operation: "run"; state: "prepared" | "in_progress" }>] =>
+      entry[1].operation === "run" && (entry[1].state === "prepared" || entry[1].state === "in_progress"));
+    const expirablePromotions = Object.entries(operations).filter((entry): entry is [string, Extract<MissionOperation, { operation: "promote" }>] =>
+      entry[1].operation === "promote" && (entry[1].state === "prepared" || entry[1].state === "in_progress") && Date.parse(entry[1].approvalExpiresAt) <= Date.parse(this.now()));
+    if (interruptedRuns.length === 0 && expirablePromotions.length === 0) return;
+
+    let snapshot = mission;
+    let events: MissionEventRecord[] = [];
+    if (interruptedRuns.length > 0) {
+      const runId = interruptedRuns[0][1].runId;
+      const reconciled = this.reconcileInterruptedRun(snapshot, runId);
+      snapshot = reconciled.snapshot;
+      events = reconciled.events;
+      if (!snapshot) throw new Error(`Mission ${missionId} was interrupted before its run became durable and cannot be reconciled automatically.`);
+      for (const [intentId, operation] of interruptedRuns) {
+        snapshot = this.withOperation(snapshot, intentId, { operation: "run", requestDigest: operation.requestDigest, state: "interrupted", runId: operation.runId });
+      }
+    }
+    for (const [intentId, operation] of expirablePromotions) {
+      snapshot = this.withOperation(snapshot, intentId, { operation: "promote", requestDigest: operation.requestDigest, state: "expired", reviewerId: operation.reviewerId, approvalNonce: operation.approvalNonce, approvalExpiresAt: operation.approvalExpiresAt });
+    }
+    await this.options.missionStore.save(snapshot, events);
+  }
+
+  private reconcileInterruptedRun(mission: MissionSnapshot, runId: string): { snapshot?: MissionSnapshot; events: MissionEventRecord[] } {
+    if (mission.activeRunId) {
+      if (mission.activeRunId !== runId) return { events: [] };
+      if (mission.status !== "running" && mission.status !== "paused" && mission.status !== "blocked") return { events: [] };
+    } else if (mission.status !== "queued" && mission.status !== "awaiting_approval") {
+      return { events: [] };
+    }
+    const timestamp = this.now();
+    const event: MissionEventRecord = {
+      id: `recovery-${this.id()}`,
+      missionId: mission.id,
+      runId,
+      sequence: mission.lastEventSequence + 1,
+      timestamp,
+      recordedAt: timestamp,
+      kind: "interruption",
+      title: "Mission run interrupted",
+      detail: "The daemon stopped before the run outcome was durable; the mission was safely blocked.",
+      payloadVersion: 1,
+    };
+    const blocked = transitionMission(mission, { type: "interrupt", runId: mission.activeRunId ? runId : undefined, event: { ...event }, reason: "Mission run was interrupted before its outcome was durable. Requeue the mission to run again." });
+    const snapshot: MissionSnapshot = {
+      ...mission,
+      ...blocked,
+      repositoryId: mission.repositoryId,
+      fingerprint: mission.fingerprint,
+      payloadVersion: 1,
+      lastEventSequence: event.sequence,
+      intentOutcomes: mission.intentOutcomes,
+      operations: mission.operations,
+    };
+    return { snapshot, events: [event] };
   }
 
   private serializeCreate<T>(operation: () => Promise<T>): Promise<T> {

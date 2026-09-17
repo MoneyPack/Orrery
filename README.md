@@ -24,6 +24,7 @@ The browser regression flow remains fixture-backed, while the Node-side mission 
 - [Real isolated mission kernel design](docs/superpowers/specs/2026-08-28-real-isolated-mission-kernel-design.md)
 - [Daemon and OpenTUI control-plane design](docs/superpowers/specs/2026-08-28-daemon-opentui-control-plane-design.md)
 - [Authoritative mission daemon design](docs/superpowers/specs/2026-08-28-authoritative-mission-daemon-design.md)
+- [Upgrade and distribution policy](docs/upgrade-and-distribution.md)
 
 ## Requirements
 
@@ -60,7 +61,7 @@ npm run desktop:make
 
 Desktop development accepts only an HTTP loopback Vite URL. Packaged applications load `dist/index.html` from the application bundle. Navigation and popups are blocked, and no signing, publishing, updating, or external services are configured. Builder targets are Windows NSIS, portable, and zip; macOS dmg and zip; and Linux AppImage and deb.
 
-The packaged smoke mode is enabled only by `ORRERY_SMOKE_TEST=1`. The launcher supplies a fixed result path and `--user-data-dir` beneath `.tmp/desktop-smoke`; the main process accepts readiness only from the trusted renderer main frame. The smoke-only preload method reports that the desktop runtime exists and that renderer `process` and `require` are both undefined. No generic IPC surface is exposed.
+The packaged smoke mode is enabled only by the `--orrery-smoke` and `--orrery-smoke-result=<path>` argv flags passed by the launcher; environment variables alone never activate it. The launcher supplies a fixed result path and `--user-data-dir` beneath `.tmp/desktop-smoke`; the main process accepts readiness only from the trusted renderer main frame and honors only the first valid report. The smoke-only preload method reports that the desktop runtime exists and that renderer `process` and `require` are both undefined. No generic IPC surface is exposed.
 
 ## Verification
 

@@ -75,7 +75,9 @@ describe("daemon authentication", () => {
     await writeFile(targetPath, "target contents", "utf8");
     await symlink(targetPath, tokenPath);
 
-    await expect(createDaemonTokenFile(tokenPath)).rejects.toMatchObject({ code: "EEXIST" });
+    // The security invariant is that an existing symlink is never followed or replaced; the
+    // specific rejection depends on platform support for lstat-based symlink detection.
+    await expect(createDaemonTokenFile(tokenPath)).rejects.toThrow(/reparse|EEXIST/i);
     expect(await readFile(targetPath, "utf8")).toBe("target contents");
   });
 

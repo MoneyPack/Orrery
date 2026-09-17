@@ -104,11 +104,12 @@ export async function createDaemonAuthority(runtimeDirectory: string, options: D
   });
   const recoverActiveMissions = async () => {
     for (const mission of await missionStore.list()) {
-      const strandedOperation = Object.entries(mission.operations ?? {}).find(([, operation]) =>
-        operation.operation === "run" && operation.state !== "committed" && !mission.activeRunId && !mission.currentWorkspace && !mission.currentChangeSnapshot,
-      );
-      const runId = mission.activeRunId ?? (strandedOperation?.[1].operation === "run" ? strandedOperation[1].runId : undefined);
-      if (!runId || (!strandedOperation && !["running", "paused", "blocked"].includes(mission.status))) continue;
+      // Run operations tracked durably by the authority are reconciled lazily and
+      // coherently by MissionAuthority itself; only handle missions without them.
+      const hasAuthorityRunOperation = Object.values(mission.operations ?? {}).some((operation) => operation.operation === "run");
+      if (hasAuthorityRunOperation) continue;
+      const runId = mission.activeRunId;
+      if (!runId || !["running", "paused", "blocked"].includes(mission.status)) continue;
       const event: MissionEventRecord = {
         id: `recovery-${crypto.randomUUID()}`,
         missionId: mission.id,
@@ -122,12 +123,8 @@ export async function createDaemonAuthority(runtimeDirectory: string, options: D
         payloadVersion: 1,
       };
       const interrupted = { ...mission, events: [...mission.events, event] };
-      const failed = strandedOperation
-        ? { ...interrupted, status: "failed" as const, completionSummary: "Mission interrupted by daemon restart.", activeRunId: undefined }
-        : transitionMission(interrupted, { type: "fail", runId, reason: "Mission interrupted by daemon restart." });
-      const operations = { ...mission.operations };
-      if (strandedOperation) delete operations[strandedOperation[0]];
-      await missionStore.save({ ...mission, ...failed, operations, lastEventSequence: event.sequence, payloadVersion: 1 }, [event]);
+      const failed = transitionMission(interrupted, { type: "fail", runId, reason: "Mission interrupted by daemon restart." });
+      await missionStore.save({ ...mission, ...failed, lastEventSequence: event.sequence, payloadVersion: 1 }, [event]);
     }
   };
   const snapshots = missionStoreRepository(missionStore);

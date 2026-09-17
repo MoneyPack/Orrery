@@ -71,7 +71,9 @@ describe("daemon lifecycle", { timeout: 30_000 }, () => {
     })).rejects.toThrow(/reparse|symbolic|real directory/i);
   });
 
-  it("hardens every app-owned Windows runtime directory", async () => {
+  it.runIf(process.platform === "win32")("hardens every app-owned Windows runtime directory", async () => {
+    // The production win32 branch resolves and lstats ancestry with Windows path semantics,
+    // which cannot address a real filesystem on other platforms, so this only runs on Windows.
     const parent = await mkdtemp(join(tmpdir(), "orrery-lifecycle-ancestry-"));
     directories.push(parent);
     const hardened: string[] = [];
@@ -84,6 +86,29 @@ describe("daemon lifecycle", { timeout: 30_000 }, () => {
     });
 
     expect(hardened).toEqual([join(parent, "Orrery"), join(parent, "Orrery", "runtime")]);
+  });
+
+  it.runIf(process.platform !== "win32")("hardens every app-owned Windows runtime directory (pure ACL computation)", async () => {
+    // Portable counterpart to the Windows-only case above: pure win32 path arithmetic with a
+    // stubbed hardener, no filesystem ancestry probe (win32-resolved POSIX paths like
+    // "\tmp\..." cannot be lstat'd on this host). Verifies every app-owned directory in the
+    // ancestry is hardened exactly once; the adjacent reparse-point test still covers the
+    // ancestry lstat path, and the Windows-only case covers real icacls wiring on Windows.
+    const hardened: string[] = [];
+
+    const runtime = await createRuntimeDirectory({
+      baseDirectory: "C:\\Users\\user\\AppData\\Local\\Orrery",
+      localAppData: "C:\\Users\\user\\AppData\\Local",
+      platform: "win32",
+      probeFilesystem: false,
+      harden: async (path) => { hardened.push(path); },
+    });
+
+    expect(runtime).toBe("C:\\Users\\user\\AppData\\Local\\Orrery\\runtime");
+    expect(hardened).toEqual([
+      "C:\\Users\\user\\AppData\\Local\\Orrery",
+      "C:\\Users\\user\\AppData\\Local\\Orrery\\runtime",
+    ]);
   });
 
   it("publishes endpoint metadata atomically without a raw token", async () => {

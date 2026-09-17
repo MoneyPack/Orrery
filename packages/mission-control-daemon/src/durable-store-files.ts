@@ -203,7 +203,7 @@ function assertOperations(value: unknown) {
   for (const [intentId, operation] of Object.entries(value)) {
     assertIdentifier(intentId, "operation id");
     assertObject(operation, "mission operation");
-    if (!new Set(["run", "promote"]).has(String(operation.operation)) || !new Set(["prepared", "in_progress", "expired", "committed"]).has(String(operation.state)) || typeof operation.requestDigest !== "string" || !/^[0-9a-f]{64}$/.test(operation.requestDigest)) throw new Error("Corrupt mission operation record.");
+    if (!new Set(["run", "promote"]).has(String(operation.operation)) || !new Set(["prepared", "in_progress", "expired", "interrupted", "committed"]).has(String(operation.state)) || typeof operation.requestDigest !== "string" || !/^[0-9a-f]{64}$/.test(operation.requestDigest)) throw new Error("Corrupt mission operation record.");
     if (operation.operation === "run") {
       exact(operation, operation.state === "committed" ? ["operation", "requestDigest", "state", "runId", "result"] : ["operation", "requestDigest", "state", "runId"], "mission operation");
       if (typeof operation.runId !== "string") throw new Error("Corrupt mission operation record.");

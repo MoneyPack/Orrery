@@ -291,6 +291,37 @@ export interface MissionPromotionResult {
   readonly result: "promoted" | "rejected" | "conflict";
 }
 
+/**
+ * The full surface the preload exposes as `window.orreryMissionControl`, and the contract the
+ * Electron-main host service must implement. The renderer is trusted first-party Theia
+ * frontend code, so the whole surface is callable from the main world; every entry point is a
+ * fixed `invoke` channel whose payload Electron main re-validates before delegating (see
+ * `registerMissionControlHostIpc` in
+ * `src/electron-main/mission-control-electron-main-contribution.ts`).
+ *
+ * Trust tiers, in declaration order:
+ *
+ * - Missions (`intakeRepository` … `reviewAndPromote`): repository intake, mission lifecycle,
+ *   and review. Every call reaches Electron main's trusted-renderer guard, which requires the
+ *   exact main frame of the assembled Theia window; `intakeRepository` and
+ *   `reviewAndPromote` additionally run through the window-bound request context because they
+ *   can raise native confirmation dialogs.
+ * - Intelligence (`getIntelligenceSettings` … `clearIntelligenceThread`): chat settings,
+ *   transcript, and turn control. Provider keys, endpoints, and transports stay in the main
+ *   process — the renderer only ever sees the redacted `IntelligenceSettingsStatus`.
+ *   `sendIntelligenceMessage` is window-bound because the model may request a tool call,
+ *   which raises a native confirmation needing a parent window. Turn status/cancel authorize
+ *   nothing, so they are ordinary guarded calls.
+ * - MCP (`listMcpCatalog` … `listMcpActivity`): tool catalog and activity. Server commands,
+ *   argument vectors, and endpoint URLs stay in main; the catalog carries redacted origins.
+ *   `registerMcpServer`, `setMcpToolDecision`, and `invokeMcpTool` raise native
+ *   confirmations and are window-bound like the review path.
+ *
+ * `inspect` and `getIntelligenceSettings` have no current widget caller: snapshots carry the
+ * review content and transcripts carry the settings status. Both remain exposed because they
+ * are part of this host-service contract and are implemented by the assembled host
+ * (`theia-app/host`), not as dead ends.
+ */
 export interface MissionControlPublicApi {
   intakeRepository(input: RepositoryIntakeInput): Promise<RepositoryIntakeResult>;
   create(input: MissionCreateInput): Promise<Mission>;
