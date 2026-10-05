@@ -81,10 +81,12 @@ export type MissionIntentOutcome =
 
 export type MissionOperation =
   | { readonly operation: "run"; readonly requestDigest: string; readonly state: "prepared" | "in_progress"; readonly runId: string }
+  | { readonly operation: "run"; readonly requestDigest: string; readonly state: "interrupted"; readonly runId: string }
   | { readonly operation: "run"; readonly requestDigest: string; readonly state: "committed"; readonly runId: string; readonly result: PublicRunMissionResult }
   | { readonly operation: "promote"; readonly requestDigest: string; readonly state: "prepared"; readonly reviewerId: string; readonly approvalNonce: string; readonly approvalExpiresAt: string }
   | { readonly operation: "promote"; readonly requestDigest: string; readonly state: "in_progress"; readonly reviewerId: string; readonly approvalNonce: string; readonly approvalExpiresAt: string; readonly token: PromotionRetryToken }
   | { readonly operation: "promote"; readonly requestDigest: string; readonly state: "expired"; readonly reviewerId: string; readonly approvalNonce: string; readonly approvalExpiresAt: string }
+  | { readonly operation: "promote"; readonly requestDigest: string; readonly state: "interrupted"; readonly reviewerId: string; readonly approvalNonce: string; readonly approvalExpiresAt: string }
   | { readonly operation: "promote"; readonly requestDigest: string; readonly state: "committed"; readonly reviewerId: string; readonly approvalNonce: string; readonly approvalExpiresAt: string; readonly result: MissionPromotionResult };
 
 export interface MissionInspectionResult {

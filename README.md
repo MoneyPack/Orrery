@@ -24,6 +24,7 @@ The browser regression flow remains fixture-backed, while the Node-side mission 
 - [Real isolated mission kernel design](docs/superpowers/specs/2026-08-28-real-isolated-mission-kernel-design.md)
 - [Daemon and OpenTUI control-plane design](docs/superpowers/specs/2026-08-28-daemon-opentui-control-plane-design.md)
 - [Authoritative mission daemon design](docs/superpowers/specs/2026-08-28-authoritative-mission-daemon-design.md)
+- [Upgrade and distribution policy](docs/upgrade-and-distribution.md)
 
 ## Requirements
 
@@ -60,7 +61,7 @@ npm run desktop:make
 
 Desktop development accepts only an HTTP loopback Vite URL. Packaged applications load `dist/index.html` from the application bundle. Navigation and popups are blocked, and no signing, publishing, updating, or external services are configured. Builder targets are Windows NSIS, portable, and zip; macOS dmg and zip; and Linux AppImage and deb.
 
-The packaged smoke mode is enabled only by `ORRERY_SMOKE_TEST=1`. The launcher supplies a fixed result path and `--user-data-dir` beneath `.tmp/desktop-smoke`; the main process accepts readiness only from the trusted renderer main frame. The smoke-only preload method reports that the desktop runtime exists and that renderer `process` and `require` are both undefined. No generic IPC surface is exposed.
+The packaged smoke mode is enabled only by the `--orrery-smoke` and `--orrery-smoke-result=<path>` argv flags passed by the launcher; environment variables alone never activate it. The launcher supplies a fixed result path and `--user-data-dir` beneath `.tmp/desktop-smoke`; the main process accepts readiness only from the trusted renderer main frame and honors only the first valid report. The smoke-only preload method reports that the desktop runtime exists and that renderer `process` and `require` are both undefined. No generic IPC surface is exposed.
 
 ## Verification
 
@@ -119,7 +120,7 @@ npm run tui:standalone
 
 Endpoint metadata, the capability token, the approved-repository registry, mission snapshots, append-only events, and the startup lock are stored under the OS-local Orrery runtime directory with restrictive permissions. The daemon binds only to numeric loopback and requires a fresh capability token for every daemon instance. A raw local path is accepted only by `propose_repository`; approval uses the returned canonical fingerprint and one-time nonce, and every ordinary mission request uses opaque repository and mission IDs plus exact revisions. Event subscriptions replay durable, per-mission sequence order after a cursor and reconnect. Active cancellation is daemon-owned: it aborts the real runner process and acknowledges only after cancellation is durable. OpenTUI is dynamically loaded only by the terminal package and requires Node.js 26.4+ with `--experimental-ffi`; browser and Electron bundles do not import it. SSH transport is deferred. Native OpenTUI is not required for protocol, lifecycle, or authority smoke tests.
 
-Promotion is enabled only when Electron acquires the daemon startup lock and completes a single-use challenge/response over an inherited, non-reopenable child stdio pipe. The daemon binds the pinned approval key to the lock nonce, parent and child process IDs, daemon instance challenge, readiness instance ID, and key fingerprint before publishing readiness. Environment variables, authenticated protocol clients, TUI processes, and web content cannot register or replace this key. This boundary prevents in-process and authenticated-client promotion forgery; arbitrary same-user native malware can already modify same-user files and repositories and remains outside this boundary unless OS-backed code identity is added later.
+Promotion is enabled only when Electron acquires the daemon startup lock and completes a single-use challenge/response over an inherited, non-reopenable child stdio pipe. Electron generates a fresh 32-byte random promotion approval key per managed daemon instance and hands it to the daemon only over that pipe; each approval is a short-lived HMAC capability (payload plus nonce, sealed with that key) rather than a signature. The daemon binds the pinned approval key to the lock nonce, parent and child process IDs, daemon instance challenge, readiness instance ID, and key fingerprint before publishing readiness. Environment variables, authenticated protocol clients, TUI processes, and web content cannot register or replace this key. This boundary prevents in-process and authenticated-client promotion forgery; arbitrary same-user native malware can already modify same-user files and repositories and remains outside this boundary unless OS-backed code identity is added later.
 
 The desktop artifacts are currently unsigned and are intended for local validation, not publication or proof of signing. See the [daemon and OpenTUI control-plane design](docs/superpowers/specs/2026-08-28-daemon-opentui-control-plane-design.md) for the trust model, endpoint/token lifecycle, event-gap behavior, and ownership boundaries.
 

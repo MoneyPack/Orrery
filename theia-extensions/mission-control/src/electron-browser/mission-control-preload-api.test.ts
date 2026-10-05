@@ -6,9 +6,41 @@ import {
   MISSION_REVIEW_CHANNEL,
   MISSION_INTAKE_REPOSITORY_CHANNEL, MISSION_CREATE_CHANNEL, MISSION_RUN_CHANNEL, MISSION_CANCEL_CHANNEL, MISSION_INSPECT_CHANNEL,
   INTELLIGENCE_GET_SETTINGS_CHANNEL, INTELLIGENCE_SET_SETTINGS_CHANNEL, INTELLIGENCE_LIST_MESSAGES_CHANNEL, INTELLIGENCE_SEND_MESSAGE_CHANNEL, INTELLIGENCE_CLEAR_THREAD_CHANNEL,
+  INTELLIGENCE_TURN_STATUS_CHANNEL, INTELLIGENCE_CANCEL_TURN_CHANNEL,
+  MCP_LIST_CATALOG_CHANNEL, MCP_REGISTER_SERVER_CHANNEL, MCP_REMOVE_SERVER_CHANNEL, MCP_SET_DECISION_CHANNEL, MCP_INVOKE_TOOL_CHANNEL, MCP_LIST_ACTIVITY_CHANNEL,
 } from "./mission-control-preload-api";
 
 describe("Theia Mission Control preload API", () => {
+  it("pins the exact exposed key set, grouped by trust tier", () => {
+    expect(Object.keys(createMissionControlPreloadApi(vi.fn()))).toEqual([
+      "intakeRepository", "create", "run", "cancel", "list", "getSnapshot", "inspect", "reviewAndPromote",
+      "getIntelligenceSettings", "setIntelligenceSettings", "listIntelligenceMessages", "sendIntelligenceMessage", "clearIntelligenceThread", "getIntelligenceTurnStatus", "cancelIntelligenceTurn",
+      "listMcpCatalog", "registerMcpServer", "removeMcpServer", "setMcpToolDecision", "invokeMcpTool", "listMcpActivity",
+    ]);
+  });
+
+  it("maps every exposed key to exactly one fixed channel", async () => {
+    const call = vi.fn().mockResolvedValue({});
+    const api = createMissionControlPreloadApi(call);
+    await api.getIntelligenceTurnStatus({ threadId: "main" });
+    await api.cancelIntelligenceTurn({ threadId: "main" });
+    await api.listMcpCatalog();
+    await api.registerMcpServer({ intentId: "reg-1", serverId: "server-1", label: "Server", transport: "http", endpoint: "https://mcp.example.com" });
+    await api.removeMcpServer({ intentId: "rm-1", serverId: "server-1" });
+    await api.setMcpToolDecision({ intentId: "dec-1", serverId: "server-1", name: "tool", decision: "deny" });
+    await api.invokeMcpTool({ intentId: "inv-1", serverId: "server-1", name: "tool", args: {} });
+    await api.listMcpActivity();
+    expect(call.mock.calls).toEqual([
+      [INTELLIGENCE_TURN_STATUS_CHANNEL, { threadId: "main" }],
+      [INTELLIGENCE_CANCEL_TURN_CHANNEL, { threadId: "main" }],
+      [MCP_LIST_CATALOG_CHANNEL],
+      [MCP_REGISTER_SERVER_CHANNEL, { intentId: "reg-1", serverId: "server-1", label: "Server", transport: "http", endpoint: "https://mcp.example.com" }],
+      [MCP_REMOVE_SERVER_CHANNEL, { intentId: "rm-1", serverId: "server-1" }],
+      [MCP_SET_DECISION_CHANNEL, { intentId: "dec-1", serverId: "server-1", name: "tool", decision: "deny" }],
+      [MCP_INVOKE_TOOL_CHANNEL, { intentId: "inv-1", serverId: "server-1", name: "tool", args: {} }],
+      [MCP_LIST_ACTIVITY_CHANNEL],
+    ]);
+  });
   it("exposes only bounded mission operations over fixed channels", async () => {
     const call = vi.fn().mockResolvedValue({});
     const api = createMissionControlPreloadApi(call);

@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@orrery/mission-control-domain": resolve(__dirname, "packages/mission-control-domain/src/index.ts"),
       "@orrery/mission-control-protocol": resolve(__dirname, "packages/mission-control-protocol/src/index.ts"),
+      "@orrery/electron-security-policy": resolve(__dirname, "packages/electron-security-policy/src/index.ts"),
     },
   },
   test: {

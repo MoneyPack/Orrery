@@ -11,7 +11,7 @@ import {
   resolvePreloadPath,
   resolveRendererSource,
 } from "./policy";
-import { isSmokeMode, registerDesktopSmokeIpc } from "./smoke";
+import { isSmokeMode, parseSmokeLaunchArgs, registerDesktopSmokeIpc } from "./smoke";
 import { registerMissionIpc } from "./mission-ipc";
 import { MissionControlDaemonClient } from "./mission-control-daemon-client";
 
@@ -48,10 +48,15 @@ app.whenReady().then(async () => {
   registerDesktopIpc(ipcMain, () => rendererUrl);
   registerMissionIpc(ipcMain, () => rendererUrl, missionClient);
   if (isSmokeMode(process.env.ORRERY_SMOKE_TEST)) {
-    const resultPath = process.env.ORRERY_SMOKE_RESULT;
-    if (!resultPath) throw new Error("ORRERY_SMOKE_RESULT is required in smoke mode");
+    throw new Error(
+      "Smoke mode must be requested by the smoke launcher via --orrery-smoke and " +
+      "--orrery-smoke-result=<path> argv flags; ORRERY_SMOKE_TEST is not accepted",
+    );
+  }
+  const smokeLaunch = parseSmokeLaunchArgs(process.argv);
+  if (smokeLaunch) {
     const timeout = setTimeout(() => app.exit(1), 15_000);
-    registerDesktopSmokeIpc(ipcMain, () => rendererUrl, resultPath, (exitCode) => {
+    registerDesktopSmokeIpc(ipcMain, () => rendererUrl, smokeLaunch.resultPath, (exitCode) => {
       clearTimeout(timeout);
       app.exit(exitCode);
     });
