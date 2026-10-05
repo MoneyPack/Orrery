@@ -11,8 +11,8 @@
     "node": ">=26.4.0"
   },
   "dependencies": {
-    "@opentui/core": "0.5.9",
-    "@opentui/keymap": "0.5.9",
+    "@opentui/core": "0.5.14",
+    "@opentui/keymap": "0.5.14",
     "@orrery/mission-control-client": "0.0.0",
     "@orrery/mission-control-domain": "0.0.0",
     "@orrery/mission-control-protocol": "0.0.0"
