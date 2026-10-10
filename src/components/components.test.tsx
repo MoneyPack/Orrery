@@ -7,7 +7,7 @@ import { AppShell } from "./app-shell";
 function renderApp() {
   return render(
     <MissionProvider runtimeDelay={0}>
-      <AppShell />
+      <AppShell boot={false} />
     </MissionProvider>,
   );
 }

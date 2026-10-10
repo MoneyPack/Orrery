@@ -1,7 +1,10 @@
 import { Moon, Planet, Sun } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMissions } from "../state/mission-context";
+import { BootSequence, hasBootedThisSession } from "./boot-sequence";
+import { LifecycleRail } from "./lifecycle-rail";
 import { MissionList } from "./mission-list";
+import { OrreryMark } from "./orrery-mark";
 import { NewMissionDialog } from "./new-mission-dialog";
 import { PlanCanvas } from "./plan-canvas";
 import { ReviewStudio } from "./review-studio";
@@ -9,13 +12,16 @@ import { RuntimeTimeline } from "./runtime-timeline";
 
 type Theme = "system" | "dark" | "light";
 
-export function AppShell() {
+export function AppShell({ boot = !hasBootedThisSession() }: { boot?: boolean }) {
   const missions = useMissions();
   const [activeId, setActiveId] = useState<string>();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => (window.localStorage.getItem("orrery.theme") as Theme) ?? "system");
+  const [booting, setBooting] = useState(boot);
+  const [entered, setEntered] = useState(!boot);
   const dialogTrigger = useRef<HTMLElement | null>(null);
   const active = missions.missions.find((mission) => mission.id === activeId) ?? missions.missions[0];
+  const finishBoot = useCallback(() => { setBooting(false); setEntered(true); }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -33,10 +39,11 @@ export function AppShell() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-entered={entered} aria-busy={booting}>
+      {booting && <BootSequence theme={theme} onDone={finishBoot} />}
       <header className="command-bar">
         <div className="brand"><Planet size={22} weight="duotone" /><span>ORRERY</span><small>MISSION CONTROL / M0</small></div>
-        <div className="command-status"><span>LOCAL</span><span>FIXTURE RUNTIME</span><span>{missions.missions.length.toString().padStart(2, "0")} MISSIONS</span></div>
+        <div className="command-status"><span className="live">{window.orreryDesktop ? "DESKTOP" : "LOCAL"}</span><span>FIXTURE RUNTIME</span><span>{missions.missions.length.toString().padStart(2, "0")} MISSIONS</span></div>
         <label className="theme-control">
           {theme === "light" ? <Sun size={15} /> : <Moon size={15} />}
           <span className="sr-only">Color theme</span>
@@ -57,10 +64,11 @@ export function AppShell() {
           <button className="sidebar-create button primary" onClick={openDialog}>New mission</button>
         </div>
         {active ? (
-          <main className="mission-workspace">
+          <main className="mission-workspace" key={active.id}>
             <header className="mission-header">
               <div><span className="eyebrow">{active.mode} mission / {active.id.slice(-5)}</span><h1>{active.title}</h1><p>{active.goal}</p></div>
               <span className={`status large status-${active.status}`}>{active.status.replaceAll("_", " ")}</span>
+              <LifecycleRail mission={active} />
             </header>
             <div className="workspace-grid">
               <PlanCanvas mission={active} onUpdate={(plan) => missions.updatePlan(active.id, plan)} onApprove={() => missions.approvePlan(active.id)} onStart={() => { void missions.start(active.id); }} onCancel={() => missions.cancel(active.id)} />
@@ -75,9 +83,15 @@ export function AppShell() {
           </main>
         ) : (
           <main className="welcome-state">
-            <div className="orbital-mark" aria-hidden="true"><span /><span /><span /></div>
-            <span className="eyebrow">No active mission</span><h1>Delegated work,<br />under observation.</h1>
+            <OrreryMark className="welcome-orrery" id="welcome" />
+            <span className="eyebrow">No active mission</span><h1>Delegated work,<br />under <em>observation.</em></h1>
             <p>Create a mission to bind its goal, plan, isolated workspace, permissions, evidence, and review decision.</p>
+            <ol className="welcome-steps" aria-label="Mission loop">
+              <li><b>01</b><span>Define the outcome</span></li>
+              <li><b>02</b><span>Approve the plan</span></li>
+              <li><b>03</b><span>Run in isolation</span></li>
+              <li><b>04</b><span>Review the evidence</span></li>
+            </ol>
           </main>
         )}
       </div>

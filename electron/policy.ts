@@ -5,6 +5,9 @@ export type RendererSource =
   | { kind: "url"; value: string }
   | { kind: "file"; value: string };
 
+/** Matches `--bg` in the dark token set so the first painted frame is the shell, not a white flash. */
+export const WINDOW_BACKGROUND_COLOR = "#0d1012";
+
 export function createWindowOptions(preload: string): BrowserWindowConstructorOptions {
   return {
     width: 1440,
@@ -12,6 +15,9 @@ export function createWindowOptions(preload: string): BrowserWindowConstructorOp
     minWidth: 960,
     minHeight: 640,
     show: false,
+    backgroundColor: WINDOW_BACKGROUND_COLOR,
+    autoHideMenuBar: true,
+    title: "Orrery Mission Control",
     webPreferences: {
       preload,
       contextIsolation: true,

@@ -23,9 +23,12 @@ afterEach(async () => {
 
 async function grantTestAccess(path: string) {
   if (process.platform !== "win32") return;
-  const identity = await (testIdentity ??= execFileAsync("whoami").then(({ stdout }) => stdout.trim()));
+  // Use the System32 binaries explicitly: MSYS/Git-for-Windows shadows `whoami` on PATH with
+  // a coreutils build that drops the `DOMAIN\` prefix, which breaks ACL identity matching.
+  const system32 = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+  const identity = await (testIdentity ??= execFileAsync(join(system32, "whoami.exe")).then(({ stdout }) => stdout.trim()));
   if (!identity) throw new Error("Unable to determine the Windows test identity.");
-  await execFileAsync("icacls", [path, "/grant:r", `${identity}:F`, "/T", "/C"]);
+  await execFileAsync(join(system32, "icacls.exe"), [path, "/grant:r", `${identity}:F`, "/T", "/C"]);
 }
 
 async function writeFixture(path: string, data: string) {

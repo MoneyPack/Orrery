@@ -1,10 +1,25 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, type Plugin } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
+/*
+ * The shipped index.html carries a strict `style-src 'self'` policy, which is correct for the
+ * production bundle because Vite emits CSS as an external file. The dev server, however, injects
+ * styles as inline <style> tags for HMR, which that policy silently blocks. The result was an
+ * unstyled dev shell with the only hint buried in the console. This loosens style-src for the
+ * dev server alone; `src/csp.test.ts` still pins the on-disk production policy.
+ */
+function devStyleCsp(): Plugin {
+  return {
+    name: "orrery-dev-style-csp",
+    apply: "serve",
+    transformIndexHtml: (html) => html.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'"),
+  };
+}
+
 export default defineConfig({
   base: "./",
-  plugins: [react()],
+  plugins: [react(), devStyleCsp()],
   resolve: {
     alias: {
       "@orrery/mission-control-domain": resolve(__dirname, "packages/mission-control-domain/src/index.ts"),

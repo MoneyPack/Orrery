@@ -1,12 +1,25 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, lstat, open } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const TOKEN_BYTES = 32;
 const TOKEN_HEX_LENGTH = TOKEN_BYTES * 2;
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 const execFileAsync = promisify(execFile);
+
+/*
+ * Resolve Windows system commands to their absolute System32 paths. PATH-based lookup is
+ * unreliable here: MSYS/Git-for-Windows environments shadow `whoami` with a GNU coreutils
+ * build that omits the domain (`user` instead of `DOMAIN\user`), so icacls output written
+ * in canonical `DOMAIN\user` form never matches the allowlist and ACL verification fails
+ * closed on every run. Absolute paths also harden against PATH tampering in general.
+ */
+function systemCommand(file: string): string {
+  if (process.platform !== "win32") return file;
+  return join(process.env.SystemRoot ?? "C:\\Windows", "System32", `${file}.exe`);
+}
 
 export function createDaemonToken(): string {
   return randomBytes(TOKEN_BYTES).toString("hex");
@@ -45,7 +58,7 @@ export async function createDaemonTokenFile(tokenPath: string, options: {
 export async function hardenPrivatePath(
   path: string,
   platform: NodeJS.Platform = process.platform,
-  run: (file: string, args: string[]) => Promise<{ stdout: string; stderr: string }> = async (file, args) => execFileAsync(file, args),
+  run: (file: string, args: string[]) => Promise<{ stdout: string; stderr: string }> = async (file, args) => execFileAsync(systemCommand(file), args),
 ): Promise<void> {
   if (platform !== "win32") return;
   let lastError: unknown;
