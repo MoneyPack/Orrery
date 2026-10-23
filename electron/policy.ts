@@ -1,5 +1,13 @@
 import type { App, BrowserWindowConstructorOptions, Session, WebContents, WebFrameMain } from "electron";
-import { dirname, join } from "node:path";
+import { win32 as win32Path } from "node:path";
+import {
+  denyPopup,
+  installDefaultDenyPermissions as installSharedDefaultDenyPermissions,
+  isAllowedDevServerUrl as isAllowedSharedDevServerUrl,
+  isAllowedNavigation as isAllowedSharedNavigation,
+  isTrustedIpcSender as isTrustedSharedIpcSender,
+  secureWebPreferences,
+} from "@orrery/electron-security-policy";
 
 export type RendererSource =
   | { kind: "url"; value: string }
@@ -18,25 +26,12 @@ export function createWindowOptions(preload: string): BrowserWindowConstructorOp
     backgroundColor: WINDOW_BACKGROUND_COLOR,
     autoHideMenuBar: true,
     title: "Orrery Mission Control",
-    webPreferences: {
-      preload,
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      webviewTag: false,
-      webSecurity: true,
-    },
+    webPreferences: secureWebPreferences(preload),
   };
 }
 
 export function isAllowedDevServerUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" &&
-      (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
-  } catch {
-    return false;
-  }
+  return isAllowedSharedDevServerUrl(value);
 }
 
 export function resolveRendererSource(
@@ -45,7 +40,10 @@ export function resolveRendererSource(
   appPath: string,
 ): RendererSource {
   if (isPackaged) {
-    return { kind: "file", value: join(appPath, "dist", "index.html") };
+    // Packaged builds ship for Windows only; app.getAppPath() is a native path there, so join
+    // with win32 semantics to avoid host-dependent separators (running the tests or a build on
+    // Linux must not change what a Windows package would compute).
+    return { kind: "file", value: win32Path.join(appPath, "dist", "index.html") };
   }
 
   if (!developmentUrl || !isAllowedDevServerUrl(developmentUrl)) {
@@ -56,11 +54,11 @@ export function resolveRendererSource(
 }
 
 export function resolvePreloadPath(mainEntryPath: string): string {
-  return join(dirname(mainEntryPath), "preload.cjs");
+  return win32Path.join(win32Path.dirname(mainEntryPath), "preload.cjs");
 }
 
 export function resolveDaemonEntryPath(mainEntryPath: string): string {
-  return join(dirname(mainEntryPath), "resources", "mission-control-daemon.cjs");
+  return win32Path.join(win32Path.dirname(mainEntryPath), "resources", "mission-control-daemon.cjs");
 }
 
 export function installGracefulShutdown(target: Pick<App, "on" | "quit">, cleanup: () => Promise<void>): void {
@@ -80,11 +78,11 @@ export function installGracefulShutdown(target: Pick<App, "on" | "quit">, cleanu
 }
 
 export function isAllowedNavigation(destination: string, rendererUrl: string): boolean {
-  return destination === rendererUrl;
+  return isAllowedSharedNavigation(destination, rendererUrl);
 }
 
 export function popupPolicy(): { action: "deny" } {
-  return { action: "deny" };
+  return denyPopup();
 }
 
 export function installNavigationPolicy(
@@ -100,8 +98,7 @@ export function installNavigationPolicy(
 }
 
 export function installDefaultDenyPermissions(target: Pick<Session, "setPermissionCheckHandler" | "setPermissionRequestHandler">): void {
-  target.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  target.setPermissionCheckHandler(() => false);
+  installSharedDefaultDenyPermissions(target);
 }
 
 export function isTrustedIpcSender(
@@ -109,5 +106,5 @@ export function isTrustedIpcSender(
   mainFrame: Pick<WebFrameMain, "url">,
   rendererUrl: string,
 ): boolean {
-  return senderFrame === mainFrame && senderFrame.url === rendererUrl;
+  return isTrustedSharedIpcSender(senderFrame, mainFrame, rendererUrl);
 }

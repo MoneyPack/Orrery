@@ -5,8 +5,32 @@ import type { SmokeReadiness, SmokeResult } from "./contract";
 import { DESKTOP_SMOKE_READY_CHANNEL } from "./channels";
 import { isTrustedIpcSender } from "./policy";
 
+export const SMOKE_MODE_FLAG = "--orrery-smoke";
+export const SMOKE_RESULT_PREFIX = "--orrery-smoke-result=";
+
 export function isSmokeMode(value: string | undefined): boolean {
   return value === "1";
+}
+
+/**
+ * Smoke mode activates only from explicit launcher argv flags, never from
+ * inherited environment variables. Returns the result path when --orrery-smoke
+ * is present, and rejects a dangling --orrery-smoke-result flag.
+ */
+export function parseSmokeLaunchArgs(argv: readonly string[]): { resultPath: string } | null {
+  const smokeRequested = argv.includes(SMOKE_MODE_FLAG);
+  const resultArgument = argv.find((argument) => argument.startsWith(SMOKE_RESULT_PREFIX));
+  if (!smokeRequested) {
+    if (resultArgument !== undefined) {
+      throw new Error(`${SMOKE_RESULT_PREFIX}<path> requires ${SMOKE_MODE_FLAG}`);
+    }
+    return null;
+  }
+  const resultPath = resultArgument?.slice(SMOKE_RESULT_PREFIX.length);
+  if (!resultPath) {
+    throw new Error(`${SMOKE_MODE_FLAG} requires ${SMOKE_RESULT_PREFIX}<path>`);
+  }
+  return { resultPath };
 }
 
 export function isValidSmokeReadiness(value: unknown): value is SmokeReadiness {
@@ -45,6 +69,9 @@ export function registerDesktopSmokeIpc(
       throw new Error("Rejected invalid desktop smoke readiness payload");
     }
 
+    // Readiness is single-fire: the first accepted payload removes the handler so
+    // any repeat invocation rejects before it can rewrite the result.
+    ipcMain.removeHandler(DESKTOP_SMOKE_READY_CHANNEL);
     const result = createSmokeResult(payload);
     await mkdir(dirname(resultPath), { recursive: true });
     const temporaryResultPath = `${resultPath}.tmp`;

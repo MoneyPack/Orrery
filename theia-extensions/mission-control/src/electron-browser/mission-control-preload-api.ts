@@ -16,6 +16,16 @@ export {
 
 type Invoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
 
+/**
+ * The exact object `contextBridge.exposeInMainWorld` publishes as
+ * `window.orreryMissionControl`.
+ *
+ * It is flat by design: one bridge key keeps the isolated-context surface enumerable and lets
+ * the key-set assertions in `mission-control-preload.test.ts`, `packaging.test.ts`, and this
+ * file's tests pin every exposed member. The trust tiers of the individual methods are
+ * documented on `MissionControlPublicApi` in `src/common/mission-control-contracts.ts`; every
+ * method is a fixed-channel `invoke` wrapper, no raw IPC handle crosses the bridge.
+ */
 export type MissionControlPreloadApi = MissionControlPublicApi;
 
 export function createMissionControlPreloadApi(call: Invoke): MissionControlPreloadApi {

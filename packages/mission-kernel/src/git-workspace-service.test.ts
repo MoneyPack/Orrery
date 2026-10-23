@@ -624,7 +624,10 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
       "reviewed by reviewer@example.test",
     );
     expect((await readFile(join(repositoryRoot, "fixture.txt"), "utf8")).replaceAll("\r\n", "\n")).toBe("promoted\n");
-    expect((await realGit(["status", "--porcelain=v1", "--", ".", ":!.orrery/"], repositoryRoot)).stdout).toBe("");
+    // The service runs every git command with core.autocrlf=true (see baseSafeGitArguments),
+    // so the promoted checkout may hold CRLF for an LF blob. Mirror that setting here: without
+    // it, whether the worktree reports as modified depends on the host's own autocrlf default.
+    expect((await realGit(["-c", "core.autocrlf=true", "status", "--porcelain=v1", "--", ".", ":!.orrery/"], repositoryRoot)).stdout).toBe("");
     expect((await realGit(["rev-parse", "--abbrev-ref", "HEAD"], workspace.worktreePath)).stdout.trim()).toBe(
       workspace.missionBranch,
     );

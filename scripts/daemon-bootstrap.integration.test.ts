@@ -20,9 +20,9 @@ describe("Electron-managed daemon bootstrap integration", () => {
     if (!lock) throw new Error("Expected startup lock");
     const issuer = new TrustedApprovalService();
     const child = daemonChild(localAppData, lock.nonce, true);
-    const binding = await Promise.race([completeParentBootstrap(child, lock.nonce, issuer.publicKey), childFailure(child)]);
+    const binding = await Promise.race([completeParentBootstrap(child, lock.nonce, issuer.approvalKey), childFailure(child)]);
     const endpoint = await Promise.race([waitForDaemon(paths.endpointPath, { maxAttempts: 1_200, delayMs: 50 }), childFailure(child)]);
-    expect(endpoint).toMatchObject({ pid: child.pid, instanceId: binding.instanceId, approvalKeyFingerprint: approvalKeyFingerprint(issuer.publicKey) });
+    expect(endpoint).toMatchObject({ pid: child.pid, instanceId: binding.instanceId, approvalKeyFingerprint: approvalKeyFingerprint(issuer.approvalKey) });
     child.kill("SIGTERM");
     await exited(child);
     await lock.release();

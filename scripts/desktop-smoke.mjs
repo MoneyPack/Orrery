@@ -47,13 +47,15 @@ await mkdir(userDataPath, { recursive: true });
 let child;
 try {
   await access(executablePath, constants.X_OK);
-  child = spawn(executablePath, [`--user-data-dir=${userDataPath}`], {
+  // Smoke mode is requested exclusively through explicit argv flags; the main
+  // process refuses env-var-based activation in packaged builds.
+  child = spawn(executablePath, [
+    `--user-data-dir=${userDataPath}`,
+    "--orrery-smoke",
+    `--orrery-smoke-result=${resultPath}`,
+  ], {
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      ORRERY_SMOKE_TEST: "1",
-      ORRERY_SMOKE_RESULT: resultPath,
-    },
+    env: { ...process.env },
     stdio: "inherit",
     windowsHide: true,
   });

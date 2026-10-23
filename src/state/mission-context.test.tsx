@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MissionProvider,
   STORAGE_KEY,
+  __testing,
   useMissions,
 } from "./mission-context";
 import { createMission } from "../domain/mission";
@@ -314,16 +315,75 @@ describe("MissionProvider", () => {
     expect(new Set(result.current.missions[0].events.map((event) => event.runId)).size).toBe(2);
   });
 
-  it("exposes corrupt persisted state without overwriting it and can recover", () => {
+  it("quarantines corrupt persisted state aside, surfaces the error, and recovers", () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, missions: [{ id: "broken" }] }));
     const original = window.localStorage.getItem(STORAGE_KEY);
     const { result } = renderHook(() => useMissions(), { wrapper });
 
     expect(result.current.storageError).toMatch(/corrupt|invalid/i);
     expect(result.current.missions).toEqual([]);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(original);
+    // The bad payload is moved aside, not left in place to loop the same error on reload.
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    const backups: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)!;
+      if (key.startsWith(`${STORAGE_KEY}.corrupt.`)) backups.push(key);
+    }
+    expect(backups).toHaveLength(1);
+    expect(window.localStorage.getItem(backups[0])).toBe(original);
+
+    // The next reload no longer sees the corrupt payload.
+    const reloaded = renderHook(() => useMissions(), { wrapper });
+    expect(reloaded.result.current.storageError).toBeUndefined();
+    reloaded.unmount();
+
     act(() => result.current.resetDemo());
     expect(result.current.storageError).toBeUndefined();
+    // Reset also removes stale corrupt backups.
+    expect(window.localStorage.getItem(backups[0])).toBeNull();
+  });
+
+  it("loads a v1 payload untouched", () => {
+    const mission = createMission({ ...createInput, plan: { scope: "Scope", actions: ["Act"], acceptanceCriteria: ["Prove"] } });
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, missions: [mission] }));
+    const { result } = renderHook(() => useMissions(), { wrapper });
+    expect(result.current.storageError).toBeUndefined();
+    expect(result.current.missions[0].id).toBe(mission.id);
+    // No active run, so no recovery rewrite happens.
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify({ version: 1, missions: [mission] }));
+  });
+
+  it("rejects a v2 payload with a clear message until a migration exists", () => {
+    const mission = createMission({ ...createInput, plan: { scope: "Scope", actions: ["Act"], acceptanceCriteria: ["Prove"] } });
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, missions: [mission] }));
+    const { result } = renderHook(() => useMissions(), { wrapper });
+    expect(result.current.storageError).toMatch(/corrupt|invalid/i);
+    expect(result.current.storageError).toMatch(/version 2/i);
+    expect(result.current.missions).toEqual([]);
+  });
+
+  it("walks an injected migration chain up to the current version", () => {
+    const walk = (version: number, target: number, migrations: Record<number, (data: { missions: unknown[] }) => { missions: unknown[] }>) =>
+      __testing.migratePersisted({ version, missions: [{ id: "m" }] }, migrations, target);
+
+    // Identity at the current version.
+    expect(walk(1, 1, { 1: (data) => data })).toEqual({ missions: [{ id: "m" }] });
+
+    // A v1 -> v2 -> v3 chain applies each step in order.
+    const applied: number[] = [];
+    const chain = {
+      1: (data: { missions: unknown[] }) => { applied.push(1); return data; },
+      2: (data: { missions: unknown[] }) => { applied.push(2); return { missions: [...data.missions, { id: "migrated-by-v2" }] }; },
+      3: (data: { missions: unknown[] }) => { applied.push(3); return data; },
+    };
+    expect(walk(1, 3, chain)).toEqual({ missions: [{ id: "m" }, { id: "migrated-by-v2" }] });
+    expect(applied).toEqual([1, 2, 3]);
+
+    // A missing step fails with a clear message instead of producing a bad read.
+    expect(() => walk(1, 3, { 1: (data) => data, 3: (data) => data })).toThrow(/migration/i);
+
+    // Newer-than-supported payloads fail with a clear message.
+    expect(() => walk(4, 3, chain)).toThrow(/version 4.*newer/i);
   });
 
   it("normalizes a reload during a permission request to a recoverable interruption", async () => {
@@ -375,7 +435,7 @@ describe("MissionProvider", () => {
     expect(restored.result.current.missions).toEqual([]);
   });
 
-  it("does not expose a mission transition when its durable write fails", async () => {
+  it("surfaces a storage error and keeps the in-memory transition when the durable write fails", async () => {
     const storage: Storage = {
       length: 0,
       clear: vi.fn(),
@@ -393,11 +453,13 @@ describe("MissionProvider", () => {
     act(() => result.current.create(createInput));
 
     await waitFor(() => expect(result.current.storageError).toMatch(/save|storage/i));
-    expect(result.current.missions).toEqual([]);
+    // React state is authoritative: the transition is applied in memory and the failed
+    // durable write is surfaced instead of silently rolling the state back.
+    expect(result.current.missions).toHaveLength(1);
     expect(storage.setItem).toHaveBeenCalledTimes(1);
   });
 
-  it("persists each transition once before exposing it", () => {
+  it("persists each transition exactly once", () => {
     const writes: string[] = [];
     const storage: Storage = {
       length: 0,
@@ -418,7 +480,7 @@ describe("MissionProvider", () => {
     expect(JSON.parse(writes[0]).missions[0].id).toBe(result.current.missions[0].id);
   });
 
-  it("does not start runtime work when persisting the running state fails", async () => {
+  it("still runs the fixture and surfaces a storage error when persisting the running state fails", async () => {
     const mission = createMission({ ...createInput, plan: { scope: "Scope", actions: ["Act"], acceptanceCriteria: ["Prove"] } });
     const queued = { ...mission, status: "queued" as const, plan: { ...mission.plan, approved: true } };
     const storage: Storage = {
@@ -434,10 +496,15 @@ describe("MissionProvider", () => {
     );
     const { result } = renderHook(() => useMissions(), { wrapper: failingWrapper });
 
-    await act(async () => { await result.current.start(mission.id); });
+    act(() => { void result.current.start(mission.id); });
 
-    expect(result.current.missions[0].status).toBe("queued");
-    expect(result.current.storageError).toMatch(/save|storage/i);
+    // The run is not gated on the durable write: it starts and progresses in memory while the
+    // persistence failure is surfaced as a storage error.
+    await waitFor(() => expect(result.current.missions[0].status).toBe("blocked"));
+    await waitFor(() => expect(result.current.storageError).toMatch(/save|storage/i));
+    const request = result.current.missions[0].events.find((event) => event.capability)?.capability!;
+    act(() => result.current.resolveCapability(mission.id, request.runId, request.requestId, "denied"));
+    await waitFor(() => expect(result.current.missions[0].status).toBe("ready_for_review"));
     act(() => result.current.cancel(mission.id));
     expect(result.current.runtimeError).toMatch(/no active run/i);
   });

@@ -33,22 +33,22 @@ export async function runDaemon(): Promise<void> {
   await removeTransientStateFile(paths.tokenPath);
 
   const instanceId = randomUUID();
-  let trustedApprovalPublicKey: string | undefined;
+  let trustedApprovalKey: string | undefined;
   if (managed) {
     const parentPid = process.ppid;
     const challenge = randomBytes(32).toString("hex");
     const bootstrapWrite = createWriteStream("NUL", { fd: 3 });
     const bootstrapRead = createReadStream("NUL", { fd: 4 });
     try {
-      await writeBootstrapChallenge(bootstrapWrite, { type: "promotion_bootstrap_challenge", version: 1, parentPid, childPid: process.pid, instanceId, challenge });
+      await writeBootstrapChallenge(bootstrapWrite, { type: "promotion_bootstrap_challenge", version: 2, parentPid, childPid: process.pid, instanceId, challenge });
       const bootstrap = await readBootstrapFrame(bootstrapRead, { handoffNonce: handoffNonce!, parentPid, childPid: process.pid, instanceId, challenge });
-      trustedApprovalPublicKey = bootstrap.approvalPublicKey;
+      trustedApprovalKey = bootstrap.approvalKey;
     } finally {
       bootstrapRead.destroy();
       bootstrapWrite.destroy();
     }
   }
-  const authority = await createDaemonAuthority(runtimeDirectory, { trustedApprovalPublicKey });
+  const authority = await createDaemonAuthority(runtimeDirectory, { trustedApprovalKey });
   const server = new DaemonServer({
     tokenPath: paths.tokenPath,
     registry: authority.registry,
@@ -76,7 +76,7 @@ export async function runDaemon(): Promise<void> {
       pid: process.pid,
       instanceId,
       lockNonce: handoffNonce ?? lock?.nonce,
-      ...(trustedApprovalPublicKey ? { approvalKeyFingerprint: approvalKeyFingerprint(trustedApprovalPublicKey) } : {}),
+      ...(trustedApprovalKey ? { approvalKeyFingerprint: approvalKeyFingerprint(trustedApprovalKey) } : {}),
     });
     await new Promise<void>((resolve) => {
       const finish = () => resolve();

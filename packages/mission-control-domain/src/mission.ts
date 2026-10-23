@@ -123,7 +123,8 @@ export type MissionAction =
   | { type: "accept" }
   | { type: "reject" }
   | { type: "fail"; runId?: string; reason: string }
-  | { type: "cancel"; runId?: string; event?: MissionEvent };
+  | { type: "cancel"; runId?: string; event?: MissionEvent }
+  | { type: "interrupt"; runId?: string; event: MissionEvent; reason: string };
 
 const now = () => new Date().toISOString();
 
@@ -226,7 +227,10 @@ export function transitionMission(mission: Mission, action: MissionAction): Miss
       assertStatus(mission, action, ["draft", "planning", "revision_requested"]);
       return update(mission, { status: "awaiting_approval" });
     case "approve_plan":
-      assertStatus(mission, action, ["draft", "planning", "awaiting_approval"]);
+      assertStatus(mission, action, ["draft", "planning", "awaiting_approval", "blocked"]);
+      if (mission.status === "blocked" && (mission.activeRunId || !mission.completionSummary?.trim())) {
+        throw new MissionTransitionError(mission.status, action.type, "Only an interrupted mission without an active run can be requeued.");
+      }
       if (
         !mission.plan.scope.trim() ||
         mission.plan.actions.every((item) => !item.trim()) ||
@@ -401,6 +405,37 @@ export function transitionMission(mission: Mission, action: MissionAction): Miss
         activeRunId: undefined,
         events: action.event ? [...mission.events, action.event] : mission.events,
       });
+    case "interrupt": {
+      assertStatus(mission, action, ["queued", "running", "paused", "blocked"]);
+      if (mission.activeRunId) {
+        if (!action.runId) {
+          throw new MissionTransitionError(mission.status, action.type, "A run identifier is required.");
+        }
+        assertActiveRun(mission, action.runId, action);
+      } else if (mission.status !== "queued") {
+        throw new MissionTransitionError(mission.status, action.type, "Only a queued mission without an active run can be interrupted.");
+      }
+      if (!action.reason.trim()) {
+        throw new MissionTransitionError(mission.status, action.type, "Interruption requires a non-empty reason.");
+      }
+      const interruptionRunId = action.runId ?? action.event.runId;
+      if (!interruptionRunId || action.event.missionId !== mission.id || action.event.runId !== interruptionRunId ||
+        action.event.kind !== "interruption" || action.event.sequence !== mission.events.length + 1 ||
+        mission.events.some((event) => event.id === action.event.id)) {
+        throw new MissionTransitionError(mission.status, action.type, "Interruption event is invalid.");
+      }
+      return update(mission, {
+        status: "blocked",
+        activeRunId: undefined,
+        completionSummary: action.reason.trim(),
+        events: [
+          ...mission.events.map((event) => event.runId === interruptionRunId && event.kind === "capability_request" && !event.capability?.resolved
+            ? { ...event, capability: { ...event.capability!, resolved: "interrupted" as const } }
+            : event),
+          action.event,
+        ],
+      });
+    }
   }
 }
 
