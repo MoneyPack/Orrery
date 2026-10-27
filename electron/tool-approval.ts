@@ -1,4 +1,5 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { allow, deny, type Permission, type PermissionDecision } from "@orrery/mission-control-domain";
 
 /**
  * A tool invocation bound to a signed, expiring, single-use capability.
@@ -134,6 +135,41 @@ export class ToolApprovalService {
     this.spent.set(payload.nonce, expiresAt);
     this.forgetExpired(now);
     return { nonce: payload.nonce, expiresAt: payload.expiresAt, approverId: toolApprovalPrincipal(this.publicKey) };
+  }
+
+  /**
+   * Non-throwing form of verify for the shared Permission pattern: the same
+   * checks, spending, and error text, returned as a decision instead of thrown.
+   */
+  check(input: ToolApprovalRequest & { readonly capability: string }): PermissionDecision<VerifiedToolApproval> {
+    try {
+      return allow(this.verify(input));
+    } catch (error) {
+      return deny(error instanceof Error ? error.message : "Tool approval is invalid.");
+    }
+  }
+
+  /**
+   * Withdraws an outstanding capability before it is used, so a confirmed approval can
+   * be cancelled without invoking its tool call. Unknown and already-spent nonces are
+   * ignored: after spending or expiry there is nothing left to withdraw.
+   */
+  revokeCapability(nonce: string): void {
+    this.spent.delete(nonce);
+  }
+
+  /**
+   * The tool-approval system as a shared Permission: check is the non-throwing
+   * verify-and-spend, approve mints a fresh capability by issuing, and revoke
+   * withdraws an outstanding capability by nonce.
+   */
+  asPermission(): Permission<ToolApprovalRequest & { capability: string }, VerifiedToolApproval, string, string> {
+    return {
+      system: "tool-approval",
+      check: (input) => this.check(input),
+      approve: (input) => this.issue(input),
+      revoke: (nonce) => this.revokeCapability(nonce),
+    };
   }
 
   /**
