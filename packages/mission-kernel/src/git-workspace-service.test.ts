@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, chmod, mkdtemp, mkdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, mkdir, readFile, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -170,8 +170,11 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
       targetBranch: "main",
     });
 
-    expect(workspace.repositoryRoot).toBe(resolve(repositoryRoot));
-    expect(workspace.worktreePath).toMatch(new RegExp(`${escapeRegex(join(workspaceRoot, "worktrees"))}.+${escapeRegex(workspace.id)}$`));
+    expect(workspace.repositoryRoot).toBe(await realpath(repositoryRoot));
+    // The service derives worktree paths from the canonical runtime root, which may differ from
+    // the spelled temp path on hosts reached through an alias (Windows 8.3 names, macOS /var).
+    const canonicalWorkspaceRoot = await realpath(workspaceRoot);
+    expect(workspace.worktreePath).toMatch(new RegExp(`${escapeRegex(join(canonicalWorkspaceRoot, "worktrees"))}.+${escapeRegex(workspace.id)}$`));
     expect(workspace.missionBranch).toBe("orrery/mission-550e8400-e29b-41d4-a716-446655440000");
     expect((await readFile(join(workspace.worktreePath, "fixture.txt"), "utf8")).replaceAll("\r\n", "\n")).toBe(
       "initial\n",
@@ -240,7 +243,8 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
         targetBranch: "main",
       });
 
-    expect(workspace.worktreePath).toMatch(new RegExp(`${escapeRegex(join(workspaceRoot, "worktrees"))}.+${escapeRegex(workspace.id)}$`));
+    const canonicalWorkspaceRoot = await realpath(workspaceRoot);
+    expect(workspace.worktreePath).toMatch(new RegExp(`${escapeRegex(join(canonicalWorkspaceRoot, "worktrees"))}.+${escapeRegex(workspace.id)}$`));
     await expect(access(join(outside, "worktrees"))).rejects.toThrow();
   });
 

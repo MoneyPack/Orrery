@@ -202,13 +202,15 @@ function isAbort(error: unknown) { return error instanceof Error && (error.name 
 async function writeMissionFileSafely(path: string, content: string, configuredWorkspaceRoot?: string): Promise<void> {
   const parent = dirname(path);
   const workspaceRoot = resolve(configuredWorkspaceRoot ?? dirname(dirname(parent)));
-  const canonicalRoot = await realpath(workspaceRoot);
-  if (canonicalRoot !== workspaceRoot) throw new Error("Mission workspace root is not safe");
   const rootMetadata = await lstat(workspaceRoot);
   if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) throw new Error("Mission workspace root is not safe");
+  // Containment is judged between canonical paths only. A spelled root carrying an OS alias (a
+  // Windows 8.3 short name, a symlinked macOS temp root) must not fail, while a parent that was
+  // swapped for a junction/symlink still resolves outside the canonical root and is rejected.
+  const canonicalRoot = await realpath(workspaceRoot);
   const canonicalParent = await realpath(parent);
-  const relativeParent = relative(workspaceRoot, canonicalParent);
-  if (canonicalParent !== resolve(parent) || relativeParent === "" || relativeParent === ".." || relativeParent.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relativeParent)) {
+  const relativeParent = relative(canonicalRoot, canonicalParent);
+  if (relativeParent === "" || relativeParent === ".." || relativeParent.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relativeParent)) {
     throw new Error("Mission file parent is not safe");
   }
 
