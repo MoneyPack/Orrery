@@ -10,3 +10,4 @@ export * from "./promotion-approval";
 export * from "./repository-registry";
 export * from "./review-content";
 export * from "./server";
+export * from "./telemetry-projection";
