@@ -1,0 +1,5 @@
+# Static-hosting security headers for any future hosting of dist/.
+# Vite copies public/ into dist/ verbatim, so this file ships with the bundle.
+# Plain _headers form honored by Netlify, Cloudflare Pages, and similar hosts.
+/*
+  Content-Security-Policy: frame-ancestors 'none'

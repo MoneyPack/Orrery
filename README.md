@@ -126,7 +126,7 @@ The desktop artifacts are currently unsigned and are intended for local validati
 
 The browser test creates and approves a mission, starts the fixture runtime, denies network access, inspects the resulting change and evidence, accepts the mission, reloads, and verifies persistence. The real mission smoke creates and removes its own disposable repository under repo-local `.tmp/real-mission-smoke` and a separate private worktree runtime under the operating-system temporary directory. The daemon authority smoke creates a disposable Git repository and private runtime under the operating-system temporary directory, exercises authenticated proposal through exact promotion plus active cancellation and restart replay, and removes both in `finally`; generated repository/worktree state is never used as the project checkout.
 
-Production hosting must send `Content-Security-Policy: frame-ancestors 'none'` as an HTTP response header. Browsers ignore `frame-ancestors` in a meta-delivered policy, so the standalone shell deliberately omits that ineffective directive.
+Production hosting must send `Content-Security-Policy: frame-ancestors 'none'` as an HTTP response header. Browsers ignore `frame-ancestors` in a meta-delivered policy, so the standalone shell deliberately omits that ineffective directive. Any future static hosting of `dist/` must serve the checked-in [`public/_headers`](public/_headers) config (Netlify/Cloudflare-Pages plain-headers form); `src/csp.test.ts` fails the deploy pipeline if that file is missing or drops the `frame-ancestors 'none'` directive. Verify the header on the deployed host before treating a release as done.
 
 ## Structure
 
