@@ -3,7 +3,8 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { SmokeReadiness, SmokeResult } from "./contract";
 import { DESKTOP_SMOKE_READY_CHANNEL } from "./channels";
-import { isTrustedIpcSender } from "./policy";
+import { enforce } from "@orrery/mission-control-domain";
+import { ipcSenderTrustDecision } from "./ipc-permission";
 
 export const SMOKE_MODE_FLAG = "--orrery-smoke";
 export const SMOKE_RESULT_PREFIX = "--orrery-smoke-result=";
@@ -62,9 +63,10 @@ export function registerDesktopSmokeIpc(
 ): void {
   ipcMain.removeHandler(DESKTOP_SMOKE_READY_CHANNEL);
   ipcMain.handle(DESKTOP_SMOKE_READY_CHANNEL, async (event: IpcMainInvokeEvent, payload: unknown) => {
-    if (!isTrustedIpcSender(event.senderFrame, event.sender.mainFrame, getRendererUrl())) {
-      throw new Error("Rejected untrusted desktop smoke IPC request");
-    }
+    enforce(
+      ipcSenderTrustDecision({ senderFrame: event.senderFrame, mainFrame: event.sender.mainFrame, rendererUrl: getRendererUrl() }),
+      () => new Error("Rejected untrusted desktop smoke IPC request"),
+    );
     if (!isValidSmokeReadiness(payload)) {
       throw new Error("Rejected invalid desktop smoke readiness payload");
     }

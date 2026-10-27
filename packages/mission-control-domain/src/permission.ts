@@ -94,13 +94,28 @@ export type PermissionAuditSink = (record: PermissionAuditRecord) => void;
  * The decision is returned unchanged; `describe` must redact anything secret (capability
  * tokens, arguments) because audit records are meant to be persisted. A throwing sink is
  * isolated so auditing can never turn an allow into a failure or a deny into an allow.
+ * When `approve` takes a different shape than `check`, pass `describeApproval` for it.
  */
 export function audited<T, G, A, H>(
   permission: Permission<T, G, A, H>,
   sink: PermissionAuditSink,
+  describe?: (request: T) => string,
+  describeHandle?: (handle: H) => string,
+): Permission<T, G, A, H>;
+export function audited<T, G, A, H, M>(
+  permission: Permission<T, G, A, H, M>,
+  sink: PermissionAuditSink,
+  describe: (request: T) => string,
+  describeHandle: (handle: H) => string,
+  describeApproval: (request: M) => string,
+): Permission<T, G, A, H, M>;
+export function audited<T, G, A, H, M>(
+  permission: Permission<T, G, A, H, M>,
+  sink: PermissionAuditSink,
   describe: (request: T) => string = () => "",
   describeHandle: (handle: H) => string = () => "",
-): Permission<T, G, A, H> {
+  describeApproval: (request: M) => string = describe as unknown as (request: M) => string,
+): Permission<T, G, A, H, M> {
   const emit = (record: PermissionAuditRecord): void => {
     try {
       sink(record);
@@ -108,7 +123,7 @@ export function audited<T, G, A, H>(
       // An audit failure must not alter the decision it records.
     }
   };
-  const wrapped: Permission<T, G, A, H> = {
+  const wrapped: Permission<T, G, A, H, M> = {
     system: permission.system,
     check(request) {
       const decision = permission.check(request);
@@ -122,7 +137,7 @@ export function audited<T, G, A, H>(
     const approve = permission.approve.bind(permission);
     wrapped.approve = (request) => {
       const approval = approve(request);
-      emit({ system: permission.system, outcome: "approved", subject: describe(request) });
+      emit({ system: permission.system, outcome: "approved", subject: describeApproval(request) });
       return approval;
     };
   }

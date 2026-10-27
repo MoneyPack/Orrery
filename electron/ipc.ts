@@ -1,6 +1,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import type { DesktopRuntime } from "./contract";
-import { isTrustedIpcSender } from "./policy";
+import { enforce } from "@orrery/mission-control-domain";
+import { ipcSenderTrustDecision } from "./ipc-permission";
 import { DESKTOP_GET_RUNTIME_CHANNEL } from "./channels";
 
 export { DESKTOP_GET_RUNTIME_CHANNEL } from "./channels";
@@ -10,9 +11,12 @@ export function isValidRuntimeRequest(args: unknown[]): boolean {
 }
 
 function assertTrustedRequest(event: IpcMainInvokeEvent, rendererUrl: string, args: unknown[]): void {
-  if (!isValidRuntimeRequest(args) || !isTrustedIpcSender(event.senderFrame, event.sender.mainFrame, rendererUrl)) {
-    throw new Error("Rejected untrusted desktop IPC request");
-  }
+  // Arity is checked first: any extra argument rejects as untrusted without consulting frames.
+  if (!isValidRuntimeRequest(args)) throw new Error("Rejected untrusted desktop IPC request");
+  enforce(
+    ipcSenderTrustDecision({ senderFrame: event.senderFrame, mainFrame: event.sender.mainFrame, rendererUrl }),
+    () => new Error("Rejected untrusted desktop IPC request"),
+  );
 }
 
 export function registerDesktopIpc(ipcMain: IpcMain, getRendererUrl: () => string): void {
