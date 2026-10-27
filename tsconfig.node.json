@@ -37,6 +37,7 @@
       "packages/electron-security-policy/src",
       "scripts/daemon-lifecycle.ts",
       "scripts/daemon-bootstrap.ts",
+      "scripts/telemetry-query.ts",
       "e2e"
   ]
 }
