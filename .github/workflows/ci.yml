@@ -61,3 +61,64 @@ jobs:
 
       - name: Real Git/worktree/evidence/promotion kernel smoke
         run: npm run mission:smoke
+
+  release-gate:
+    name: Release gate (signed-by-default + checksums, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [verify, smoke]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Fail if unsigned local builds are enabled
+        shell: bash
+        run: |
+          if [ "${ORRERY_UNSIGNED_LOCAL:-}" = "1" ]; then
+            echo "::error::ORRERY_UNSIGNED_LOCAL=1 disables code signing; release builds must stay signed."
+            exit 1
+          fi
+          echo "Signing escape hatch is off: ORRERY_UNSIGNED_LOCAL=${ORRERY_UNSIGNED_LOCAL:-<unset>}."
+
+      - name: Assert signed-by-default packaging config
+        shell: bash
+        run: node -e "const c=require('./electron-builder.config.cjs');const f=[];if(c.forceCodeSigning!==true)f.push('forceCodeSigning must be true, got '+c.forceCodeSigning);if(c.win&&c.win.signAndEditExecutable===false)f.push('win.signAndEditExecutable must not be false');if(c.mac&&c.mac.identity===null)f.push('mac.identity must not be null');if(f.length){f.forEach((m)=>console.error('::error::'+m));process.exit(1)}console.log('Signed-by-default packaging config OK.');"
+
+      - name: Git identity for disposable smoke repositories
+        run: |
+          git config --global user.email "orrery-ci@localhost"
+          git config --global user.name "Orrery CI"
+
+      - name: Real Git/worktree/evidence/promotion kernel smoke
+        run: npm run mission:smoke
+
+      - name: Authoritative daemon kernel smoke
+        run: npm run daemon:smoke
+
+      - name: Generate SHA256 checksums for release artifacts
+        shell: bash
+        run: |
+          mkdir -p release
+          : > release/SHA256SUMS.txt
+          if [ "$(find release -type f ! -name 'SHA256SUMS.txt' | wc -l)" -gt 0 ]; then
+            find release -type f ! -name 'SHA256SUMS.txt' -exec sha256sum {} + | sort -k 2 > release/SHA256SUMS.txt
+            cat release/SHA256SUMS.txt
+          else
+            echo "# No packaged artifacts in this CI run: packaging happens on a human-owned machine with signing identities." > release/SHA256SUMS.txt
+          fi
+
+      - name: Upload release checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums-${{ matrix.os }}
+          path: release/SHA256SUMS.txt
