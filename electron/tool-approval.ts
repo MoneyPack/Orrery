@@ -163,7 +163,13 @@ export class ToolApprovalService {
    * verify-and-spend, approve mints a fresh capability by issuing, and revoke
    * withdraws an outstanding capability by nonce.
    */
-  asPermission(): Permission<ToolApprovalRequest & { capability: string }, VerifiedToolApproval, string, string> {
+  asPermission(): Permission<
+    ToolApprovalRequest & { capability: string },
+    VerifiedToolApproval,
+    string,
+    string,
+    ToolApprovalRequest
+  > {
     return {
       system: "tool-approval",
       check: (input) => this.check(input),

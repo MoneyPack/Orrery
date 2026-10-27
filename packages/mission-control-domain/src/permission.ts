@@ -43,14 +43,16 @@ export function deny(reason: string): PermissionDenied {
  *
  * @typeParam T - the request being checked.
  * @typeParam G - what an allowed check yields (verified approval, granted set, or `true`).
- * @typeParam A - what `approve` mints for a request (a capability token, an expanded grant).
+ * @typeParam A - what `approve` mints (a capability token, the capabilities added).
  * @typeParam H - what `revoke` withdraws (a nonce, a capability set).
+ * @typeParam M - what `approve` takes. Defaults to `T`; differs for single-use tokens,
+ *   where minting must not already require the token that `check` consumes.
  */
-export interface Permission<T, G = true, A = never, H = never> {
+export interface Permission<T, G = true, A = never, H = never, M = T> {
   /** Stable name of the system, used in audit records. */
   readonly system: string;
   check(request: T): PermissionDecision<G>;
-  approve?(request: T): A;
+  approve?(request: M): A;
   revoke?(handle: H): void;
 }
 

@@ -61,4 +61,23 @@ describe("native promotion approval", () => {
     const verifier = new PinnedApprovalVerifier(issuer.approvalKey, { now: () => "2026-08-29T10:00:00.000Z", maximumTtlMs: 1_000, maximumClockSkewMs: 100 });
     expect(() => verifier.verify({ ...request, capability: issuer.issue(request) })).toThrow(/clock|lifetime/i);
   });
+
+  it("check returns the verify result as a decision with the same denial text", () => {
+    const issuer = new TrustedApprovalService({ now: () => "2026-08-29T10:00:00.000Z", id: () => "nonce-1" });
+    const verifier = new PinnedApprovalVerifier(issuer.approvalKey, { now: () => "2026-08-29T10:00:01.000Z" });
+    const decision = verifier.check({ ...request, capability: issuer.issue(request) });
+    expect(decision).toEqual({ allowed: true, grant: { nonce: "nonce-1", expiresAt: "2026-08-29T10:01:00.000Z", reviewerId: approvalPrincipal(issuer.approvalKey) } });
+    expect(verifier.check({ ...request, contentDigest: "b".repeat(64), capability: issuer.issue(request) }))
+      .toEqual({ allowed: false, reason: "Promotion approval does not match the request." });
+  });
+
+  it("asPermission exposes the promotion-approval system without inventing approve or revoke", () => {
+    const issuer = new TrustedApprovalService({ now: () => "2026-08-29T10:00:00.000Z" });
+    const verifier = new PinnedApprovalVerifier(issuer.approvalKey, { now: () => "2026-08-29T10:00:01.000Z" });
+    const permission = verifier.asPermission();
+    expect(permission.system).toBe("promotion-approval");
+    expect(permission.approve).toBeUndefined();
+    expect(permission.revoke).toBeUndefined();
+    expect(permission.check({ ...request, capability: issuer.issue(request) }).allowed).toBe(true);
+  });
 });

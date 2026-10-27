@@ -150,7 +150,7 @@ describe("tool approval capability", () => {
     const permission = service.asPermission();
     expect(permission.system).toBe("tool-approval");
     const capability = permission.approve!(request);
-    const decision = permission.check!({ ...request, capability });
+    const decision = permission.check({ ...request, capability });
     expect(decision.allowed).toBe(true);
     permission.revoke!("no-such-nonce");
   });
