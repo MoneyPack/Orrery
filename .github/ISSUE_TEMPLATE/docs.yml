@@ -1,0 +1,11 @@
+---
+name: Docs
+description: Missing, wrong, or unclear documentation
+labels: [docs]
+---
+
+**Where?**
+File + section or link.
+
+**What's wrong?**
+Missing / incorrect / unclear — and what it should say.

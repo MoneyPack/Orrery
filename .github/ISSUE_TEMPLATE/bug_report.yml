@@ -1,0 +1,22 @@
+---
+name: Bug report
+description: Something is broken
+labels: [bug]
+---
+
+**What broke?**
+A clear, short description.
+
+**Reproduction**
+1. Command run (exact, e.g. `npm run daemon:smoke`)
+2. What you expected
+3. What happened (paste output)
+
+**Environment**
+- OS + version:
+- Node (`node -v`):
+- Commit (`git rev-parse --short HEAD`):
+- Channel: [ ] local (`ORRERY_UNSIGNED_LOCAL=1`) / [ ] internal signed
+
+**Security?**
+If this weakens containment, auth, promotion, or signing, do NOT file publicly — use the Security tab's private report instead (see `SECURITY.md`).
