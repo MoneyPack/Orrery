@@ -16,10 +16,10 @@ import { pathsFor, readEvents, readSnapshotFile } from "./durable-store-files";
  * - A JSON projection keeps JSONL as the single write authority, needs zero new
  *   dependencies, and answers both required questions.
  *
- * Durability contract: this module only ever reads `missions/`, `events/` and
- * (for cache freshness) file mtimes. It never writes to them; the only file it
- * writes is an optional, explicitly-requested projection cache outside those
- * directories (or at a caller-chosen path).
+ * Durability contract: this module only ever reads `missions/` and `events/`
+ * directories. It never writes to them; the only file it writes is an
+ * optional, explicitly-requested projection cache under `<root>/telemetry/`
+ * (or at a caller-chosen path).
  */
 
 export const TELEMETRY_PROJECTION_VERSION = 1;
