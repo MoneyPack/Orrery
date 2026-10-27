@@ -1,0 +1,29 @@
+name: Theia pin freshness
+
+on:
+  schedule:
+    - cron: "0 9 1 * *"
+  workflow_dispatch:
+
+jobs:
+  pin-freshness:
+    name: Theia pin at most two minors behind latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check pinned Theia against latest on npm
+        run: |
+          pinned=$(node -p "require('./theia-app/package.json').dependencies['@theia/core']")
+          latest=$(npm view @theia/core version)
+          echo "pinned=$pinned latest=$latest"
+          node -e "
+            const [pMaj, pMin] = process.argv[1].split('.').map(Number);
+            const [lMaj, lMin] = process.argv[2].split('.').map(Number);
+            const gap = (lMaj - pMaj) * 100 + (lMin - pMin);
+            if (gap > 2) {
+              console.error('Theia pin ' + process.argv[1] + ' is more than two minor versions behind latest ' + process.argv[2] + ' — review per docs/upgrade-and-distribution.md');
+              process.exit(1);
+            }
+            console.log('Theia pin is within two minors of latest (gap=' + gap + ')');
+          " "$pinned" "$latest"

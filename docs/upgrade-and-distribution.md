@@ -58,6 +58,9 @@ they are enforced nowhere in code.
   release declares as its peer/supported version — bump them together, never independently.
 - **Cadence:** review Theia releases quarterly. Do not let the pin fall more than two
   minor Theia versions behind latest; older pins stop receiving Electron security fixes.
+- **Freshness check:** the monthly `theia-freshness` workflow compares the pinned
+  `@theia/core` against latest on npm and fails when the gap exceeds two minors.
+  A failure is a review prompt, not an auto-bump — run the upgrade procedure below.
 - **Upgrade procedure:** bump all `@theia/*` packages and `electron` in both package.json
   files, reinstall via `npm run theia-app:install` (which rebuilds the native modules
   `@theia/ffmpeg`, `native-keymap`, `drivelist`), then run `theia:typecheck`,
@@ -65,11 +68,12 @@ they are enforced nowhere in code.
 - The root Electron shell (`electron/`, package.json `devDependencies.electron`) tracks
   current stable Electron and is independent of the Theia pin.
 
-## Unsigned artifacts
+## Unsigned artifacts (historical — superseded)
 
-`electron-builder.config.cjs` deliberately disables signing (`forceCodeSigning: false`,
-`signAndEditExecutable: false`, `identity: null`). Produced installers are for **local
-validation only**:
+Signing is now ON by default; unsigned output requires the explicit
+`ORRERY_UNSIGNED_LOCAL=1` opt-in (see "Do not publish unsigned artifacts" above).
+The notes below describe the pre-signing era and remain only to explain why
+unsigned binaries must never be distributed:
 
 - Windows SmartScreen and macOS Gatekeeper will warn or block these binaries for anyone
   else.
