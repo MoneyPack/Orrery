@@ -39,7 +39,7 @@ describe("mission control domain package boundary", () => {
       .join("\n");
 
     expect(source).not.toMatch(
-      /(?:electron|react|theia|@theia\/|node:fs|node:process|from ["']fs|from ["']process)/i,
+      /(?:electron|react|theia|@theia\/|node:|from ["']fs|from ["']process)/i,
     );
   });
 });

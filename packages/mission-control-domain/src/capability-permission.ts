@@ -23,6 +23,10 @@ import { allow, deny, type Permission } from "./permission";
  * A profile's grant. `check` is `authorize`; `approve` escalates the grant and returns the
  * capabilities it actually added; `revoke` withdraws capabilities. The grant is held by the
  * instance so approval and revocation are observable to later checks.
+ *
+ * `approve` performs no escalation gate: it unions whatever set it is given. It MUST be
+ * called only with an already-authorized set (for example a human-confirmed escalation),
+ * and it has no production consumer yet — wire one up only behind such a gate.
  */
 export interface ProfilePermission extends Permission<CapabilitySet, CapabilitySet, CapabilitySet, CapabilitySet> {
   readonly granted: CapabilitySet;

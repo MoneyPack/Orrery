@@ -71,6 +71,8 @@ export class ToolApprovalService {
   private readonly maximumTtlMs: number;
   /** Spent nonce to its expiry, so eviction can be limited to unreplayable entries. */
   private readonly spent = new Map<string, number>();
+  /** Outstanding nonce to its expiry: issued but neither spent nor revoked. */
+  private readonly outstanding = new Map<string, number>();
 
   constructor(context: ToolApprovalContext = {}) {
     this.now = context.now ?? (() => new Date().toISOString());
@@ -97,6 +99,7 @@ export class ToolApprovalService {
       nonce: this.id(),
     };
     const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    this.outstanding.set(payload.nonce, Date.parse(payload.expiresAt));
     return `${encoded}.${sign(null, Buffer.from(encoded), this.privateKey).toString("base64url")}`;
   }
 
@@ -133,6 +136,7 @@ export class ToolApprovalService {
     if (expiresAt <= now) throw new Error("Tool approval expired.");
     if (this.spent.has(payload.nonce)) throw new Error("Tool approval was already used.");
     this.spent.set(payload.nonce, expiresAt);
+    this.outstanding.delete(payload.nonce);
     this.forgetExpired(now);
     return { nonce: payload.nonce, expiresAt: payload.expiresAt, approverId: toolApprovalPrincipal(this.publicKey) };
   }
@@ -140,6 +144,8 @@ export class ToolApprovalService {
   /**
    * Non-throwing form of verify for the shared Permission pattern: the same
    * checks, spending, and error text, returned as a decision instead of thrown.
+   * Stateful: an allowed check spends the capability, so repeating it denies with
+   * "Tool approval was already used."
    */
   check(input: ToolApprovalRequest & { readonly capability: string }): PermissionDecision<VerifiedToolApproval> {
     try {
@@ -151,11 +157,16 @@ export class ToolApprovalService {
 
   /**
    * Withdraws an outstanding capability before it is used, so a confirmed approval can
-   * be cancelled without invoking its tool call. Unknown and already-spent nonces are
-   * ignored: after spending or expiry there is nothing left to withdraw.
+   * be cancelled without invoking its tool call. The nonce moves to the spent set, so a
+   * later verify fails closed with "already used". Unknown and already-spent nonces are
+   * ignored: after spending there is nothing left to withdraw, and revoking can never
+   * re-arm a nonce.
    */
   revokeCapability(nonce: string): void {
-    this.spent.delete(nonce);
+    const expiresAt = this.outstanding.get(nonce);
+    if (expiresAt === undefined) return;
+    this.outstanding.delete(nonce);
+    this.spent.set(nonce, expiresAt);
   }
 
   /**
@@ -180,11 +191,15 @@ export class ToolApprovalService {
 
   /**
    * Evicts only nonces that can no longer be replayed. Clearing indiscriminately would
-   * reopen replay for every capability still inside its validity window.
+   * reopen replay for every capability still inside its validity window. Expired
+   * outstanding capabilities are dropped too: they cannot verify past expiry.
    */
   private forgetExpired(now: number): void {
     for (const [nonce, expiresAt] of this.spent) {
       if (expiresAt <= now) this.spent.delete(nonce);
+    }
+    for (const [nonce, expiresAt] of this.outstanding) {
+      if (expiresAt <= now) this.outstanding.delete(nonce);
     }
   }
 }

@@ -134,14 +134,23 @@ describe("tool approval capability", () => {
       .toEqual({ allowed: false, reason: "Tool approval signature is invalid." });
   });
 
-  it("revokeCapability withdraws an outstanding capability while verify stays the spend path", () => {
+  it("revokeCapability withdraws an outstanding capability so verify fails closed", () => {
     const service = new ToolApprovalService();
     const capability = service.issue(request);
     const encoded = capability.split(".")[0];
     const nonce = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")).nonce as string;
     service.revokeCapability(nonce);
+    expect(() => service.verify({ ...request, capability })).toThrow(/already used/);
+  });
+
+  it("revokeCapability ignores unknown and already-spent nonces without re-arming them", () => {
+    const service = new ToolApprovalService();
+    const capability = service.issue(request);
+    const encoded = capability.split(".")[0];
+    const nonce = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")).nonce as string;
     service.revokeCapability("unknown-nonce");
     expect(service.verify({ ...request, capability }).nonce).toBe(nonce);
+    service.revokeCapability(nonce);
     expect(() => service.verify({ ...request, capability })).toThrow(/already used/);
   });
 

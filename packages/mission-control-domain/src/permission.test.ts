@@ -102,6 +102,14 @@ describe("profile capability permission", () => {
     expect(toArray(profile.approve(capabilities(["read"])))).toEqual([]);
   });
 
+  it("approve never grants more than the prior grant plus its input", () => {
+    const profile = profilePermission(capabilities(["read"]));
+    const before = toArray(profile.granted);
+    const requested = capabilities(["read", "network"]);
+    profile.approve(requested);
+    expect(new Set(toArray(profile.granted))).toEqual(new Set([...before, ...toArray(requested)]));
+  });
+
   it("revoke withdraws capabilities from later checks", () => {
     const profile = profilePermission(capabilities(["read", "write", "network"]));
     profile.revoke(capabilities(["network"]));

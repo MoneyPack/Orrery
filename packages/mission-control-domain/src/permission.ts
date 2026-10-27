@@ -5,8 +5,10 @@
  * and differs only in what a request is, what a successful check yields, and whether grants
  * can be minted or withdrawn at runtime. This module fixes that shape without fixing policy:
  *
- * - `check` is mandatory and is a pure decision. Denials carry a reason, never an exception,
+ * - `check` is mandatory and returns a decision, never an exception. Denials carry a reason,
  *   so callers choose between failing closed with `enforce` and branching on the result.
+ *   `check` need not be pure: single-use systems (tool approval) spend on allow, so a
+ *   second identical check may deny where the first allowed.
  * - `approve` and `revoke` are optional, because some systems have no runtime grant (IPC sender
  *   trust is fixed by the window that loaded the renderer) and pretending otherwise would add
  *   an approval path that does not exist.
