@@ -167,7 +167,7 @@ describe("container enforcement violations", () => {
     devices.HostConfig.Devices = [{ PathOnHost: "/dev/kvm" }];
     expect(reasonsFor(devices).join(" ")).toMatch(/device/i);
 
-    for (const field of ["PidMode", "IpcMode", "UTSMode", "UsernsMode"] as const) {
+    for (const field of ["PidMode", "IpcMode", "UTSMode", "UsernsMode", "CgroupnsMode"] as const) {
       const container = honoredContainer();
       container.HostConfig[field] = "host";
       expect(reasonsFor(container).join(" "), field).toMatch(/host namespace/i);
@@ -191,6 +191,32 @@ describe("container enforcement violations", () => {
     const digest = honoredContainer();
     digest.Config.Image = "registry.example/app:latest";
     expect(reasonsFor(digest).join(" ")).toMatch(/digest/i);
+  });
+
+  it("fails closed on missing capabilities, devices, namespaces, seccomp, and tmpfs bounds", () => {
+    const noCapAdd = honoredContainer() as unknown as Record<string, unknown>;
+    delete (noCapAdd.HostConfig as Record<string, unknown>).CapAdd;
+    expect(reasonsFor(noCapAdd).join(" ")).toMatch(/CapAdd/i);
+
+    const noDevices = honoredContainer() as unknown as Record<string, unknown>;
+    delete (noDevices.HostConfig as Record<string, unknown>).Devices;
+    expect(reasonsFor(noDevices).join(" ")).toMatch(/Devices/i);
+
+    const nonStringNs = honoredContainer() as unknown as Record<string, unknown>;
+    (nonStringNs.HostConfig as Record<string, unknown>).IpcMode = 7;
+    expect(reasonsFor(nonStringNs).join(" ")).toMatch(/IpcMode/i);
+
+    const unknownSeccomp = honoredContainer();
+    unknownSeccomp.HostConfig.SecurityOpt = ["no-new-privileges", "seccomp=custom-profile.json"];
+    expect(reasonsFor(unknownSeccomp).join(" ")).toMatch(/seccomp/i);
+
+    const unboundedTmp = honoredContainer();
+    unboundedTmp.HostConfig.Tmpfs = { "/tmp": "rw" };
+    expect(reasonsFor(unboundedTmp).join(" ")).toMatch(/\/tmp/i);
+
+    const oversizedTmp = honoredContainer();
+    oversizedTmp.HostConfig.Tmpfs = { "/tmp": "rw,size=16g" };
+    expect(reasonsFor(oversizedTmp).join(" ")).toMatch(/\/tmp/i);
   });
 
   it("denies malformed inspect output before dispatch", () => {

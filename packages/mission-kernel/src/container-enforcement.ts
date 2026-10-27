@@ -51,6 +51,8 @@ const ROOT_USERS = new Set(["", "0", "root"]);
 const SOCKET_SUFFIXES = ["docker.sock", "podman.sock", "containerd.sock", "crio.sock"];
 const FORBIDDEN_SOURCE_PREFIXES = ["/", "/etc", "/proc", "/sys", "/run", "/var/run"];
 const NAMESPACE_MODE_FIELDS = ["PidMode", "IpcMode", "UTSMode", "UsernsMode", "CgroupnsMode"] as const;
+const APPROVED_SECCOMP_PROFILES = new Set(["seccomp=default"]);
+const MAX_TMPFS_BYTES = 512 * 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,6 +60,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizePath(value: string): string {
   return value.replaceAll("\\", "/");
+}
+
+function parseTmpfsSizeBytes(options: string): number | null {
+  const match = options.toLowerCase().match(/(?:^|,)size=(\d+)([kmg]?)b?(?:,|$)/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  if (!Number.isSafeInteger(amount)) return null;
+  const unit = match[2];
+  const multiplier = unit === "k" ? 1024 : unit === "m" ? 1024 * 1024 : unit === "g" ? 1024 * 1024 * 1024 : 1;
+  return amount * multiplier;
 }
 
 function denied(reason: string): ContainerEnforcementVerdict {
@@ -243,6 +255,8 @@ function checkSecurityOpt(securityOpt: unknown, reasons: string[]): void {
     reasons.push("seccomp confinement is missing");
   } else if (seccomp === "seccomp=unconfined") {
     reasons.push("seccomp=unconfined is forbidden");
+  } else if (!APPROVED_SECCOMP_PROFILES.has(seccomp)) {
+    reasons.push(`seccomp profile is not approved: ${seccomp}`);
   }
 }
 
@@ -256,12 +270,10 @@ function verifyContainer(container: unknown, policy: ContainerEnforcementPolicy)
   if (hostConfig.NetworkMode !== "none") reasons.push("NetworkMode must be none");
   if (hostConfig.ReadonlyRootfs !== true) reasons.push("ReadonlyRootfs must be true");
 
-  if (hostConfig.CapAdd !== undefined && hostConfig.CapAdd !== null) {
-    if (!Array.isArray(hostConfig.CapAdd)) {
-      reasons.push("HostConfig.CapAdd must be an array");
-    } else if (hostConfig.CapAdd.length > 0) {
-      reasons.push(`added Linux capabilities are forbidden: ${hostConfig.CapAdd.join(", ")}`);
-    }
+  if (!Array.isArray(hostConfig.CapAdd)) {
+    reasons.push("HostConfig.CapAdd must be an empty array");
+  } else if (hostConfig.CapAdd.length > 0) {
+    reasons.push(`added Linux capabilities are forbidden: ${hostConfig.CapAdd.join(", ")}`);
   }
   if (
     !Array.isArray(hostConfig.CapDrop) ||
@@ -272,9 +284,10 @@ function verifyContainer(container: unknown, policy: ContainerEnforcementPolicy)
 
   for (const field of ["Devices", "DeviceRequests"] as const) {
     const devices = hostConfig[field];
-    if (devices !== undefined && devices !== null) {
-      if (!Array.isArray(devices)) reasons.push(`HostConfig.${field} must be an array`);
-      else if (devices.length > 0) reasons.push(`container devices are forbidden (${field})`);
+    if (!Array.isArray(devices)) {
+      reasons.push(`HostConfig.${field} must be a verified empty array`);
+    } else if (devices.length > 0) {
+      reasons.push(`container devices are forbidden (${field})`);
     }
   }
 
@@ -282,14 +295,34 @@ function verifyContainer(container: unknown, policy: ContainerEnforcementPolicy)
 
   for (const field of NAMESPACE_MODE_FIELDS) {
     const mode = hostConfig[field];
-    if (typeof mode === "string" && mode.toLowerCase() === "host") {
-      reasons.push(`${field} must not join the host namespace`);
+    if (mode === undefined || mode === null) {
+      reasons.push(`${field} must be an approved non-host namespace mode`);
+    } else if (typeof mode !== "string") {
+      reasons.push(`${field} must be an approved non-host namespace mode`);
+    } else {
+      const normalized = mode.trim().toLowerCase();
+      if (normalized === "" || normalized === "private") continue;
+      if (normalized === "host" || normalized === "shareable" || normalized.startsWith("container:")) {
+        reasons.push(`${field} must not join the host namespace`);
+      } else {
+        reasons.push(`${field} is not an approved namespace mode`);
+      }
     }
   }
 
   const tmpfs = hostConfig.Tmpfs;
-  if (!isRecord(tmpfs) || !("/tmp" in tmpfs)) {
+  if (!isRecord(tmpfs)) {
     reasons.push("a bounded /tmp filesystem is required");
+  } else {
+    const tmp = tmpfs["/tmp"];
+    if (typeof tmp !== "string") {
+      reasons.push("a bounded /tmp filesystem is required");
+    } else {
+      const size = parseTmpfsSizeBytes(tmp);
+      if (size === null || size <= 0 || size > MAX_TMPFS_BYTES) {
+        reasons.push("a bounded /tmp filesystem is required");
+      }
+    }
   }
 
   const config = container.Config;
