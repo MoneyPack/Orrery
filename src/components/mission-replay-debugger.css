@@ -16,6 +16,10 @@
 
 .replay-position { display: inline-flex; align-items: center; justify-content: center; min-width: 80px; padding: 0 12px; color: var(--text); font: 600 11px var(--mono); font-variant-numeric: tabular-nums; }
 
+.replay-scrub { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 0; }
+.replay-scrub > i { transform: scaleX(0); }
+.replay-controls { position: relative; }
+
 .replay-content { display: grid; grid-template-rows: auto 1fr auto; height: 100%; overflow: hidden; }
 
 .replay-event-panel, .replay-state-panel, .replay-timeline-panel { padding: 16px; border-bottom: 1px solid var(--line); overflow-y: auto; animation: panel-reveal var(--t-med) var(--ease-out); }

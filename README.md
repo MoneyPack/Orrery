@@ -29,6 +29,8 @@ The reference shell includes:
 - Versioned local persistence under `orrery.missions.v1`.
 - Compact Mission Control, editable Plan Canvas, Runtime Timeline, and Review Studio surfaces.
 - Accept, reject, and request-revision decisions through domain transitions.
+- A pre-boot welcome launcher: an inspirational entry with isolate / approve / verify pillars and a live mission count, shown once per session (skipped in packaged smoke mode) before the boot calibration hands off to Mission Control.
+- Native motion choreography with no animation dependencies: `[data-reveal]` / `[data-stagger]` cascades, `.meter` run/scrub bars, `.beacon` live-status dots, and `[data-tick]` count-up bumps across the welcome state, runtime timeline, lifecycle rail, and replay debugger.
 - Dark, light, and system themes; responsive layouts; keyboard focus; and reduced-motion support.
 
 The browser regression flow remains fixture-backed, while the Node-side mission kernel now executes a deterministic local task in a real isolated Git worktree, records diff and command evidence, and promotes only an explicitly accepted reviewed change. Mission and temporary promotion worktrees live under an Orrery-owned private runtime root outside repository-controlled `.orrery` paths; callers can inject `workspaceRoot` into `GitWorkspaceService` and `MissionRunner`. Repository metadata such as promotion retry records may remain under `.orrery`. Trusted repository binding is deferred: the current kernel accepts a repository root from its trusted Node-side caller rather than exposing repository selection through the renderer.

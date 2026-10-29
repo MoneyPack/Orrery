@@ -1,9 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function enterMissionControl(page: Page) {
+  const enter = page.getByRole("button", { name: "Enter Mission Control" });
+  if ((await enter.count()) > 0) await enter.click();
+}
 
 test("create, plan, run, deny, review, accept, and restore", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await enterMissionControl(page);
 
   await page.getByRole("button", { name: "New mission" }).click();
   await page.getByLabel("Mission title").fill("Harden command discovery");
@@ -46,6 +52,7 @@ test("supports keyboard focus, reduced motion, mobile layout, and cancellation",
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await enterMissionControl(page);
 
   await expect(page.locator(".app-shell")).toHaveCSS("min-width", "0px");
 
@@ -75,6 +82,7 @@ test("reload during permission becomes an interrupted mission that can be cancel
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await enterMissionControl(page);
 
   await page.getByRole("button", { name: "New mission" }).click();
   await page.getByLabel("Mission title").fill("Recover interrupted permission");

@@ -29,6 +29,13 @@ describe("Electron main security policy", () => {
     });
   });
 
+  it("forwards launcher flags to the sandboxed preload via additionalArguments", () => {
+    expect(createWindowOptions("C:\\app\\preload.js", ["--orrery-smoke"]).webPreferences).toMatchObject({
+      additionalArguments: ["--orrery-smoke"],
+    });
+    expect(createWindowOptions("C:\\app\\preload.js").webPreferences).not.toHaveProperty("additionalArguments");
+  });
+
   it.each([
     "http://localhost:5173",
     "http://127.0.0.1:5173/",

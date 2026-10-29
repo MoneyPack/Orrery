@@ -27,6 +27,14 @@ describe("secureWebPreferences", () => {
   it("omits the preload when none is provided", () => {
     expect(secureWebPreferences()).not.toHaveProperty("preload");
   });
+
+  it("forwards launcher flags without mutating the caller's array", () => {
+    const args = ["--orrery-smoke"];
+    const prefs = secureWebPreferences("/preload.cjs", args);
+    expect(prefs.additionalArguments).toEqual(["--orrery-smoke"]);
+    expect(prefs.additionalArguments).not.toBe(args);
+    expect(secureWebPreferences("/preload.cjs")).not.toHaveProperty("additionalArguments");
+  });
 });
 
 describe("isAllowedDevServerUrl", () => {

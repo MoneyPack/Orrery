@@ -71,6 +71,48 @@ Error: Electron failed to install correctly. Please delete `node_modules/electro
 
 - **Suspected cause:** Environment/install gap, not a code failure. `theia:install` runs with `--ignore-scripts`, which skips the Electron postinstall binary download, so `theia-extensions/mission-control/node_modules/electron` has no usable binary and any suite importing `@theia/electron` fails at import time. Every test that could load passed (189/189). Next step for a fix task: run the manual electron install inside `theia-extensions/mission-control` (per the error message) and re-run; consider whether `theia:install` should download Electron as a separate step.
 
+## Addendum — 2026-10-29: all gates green
+
+Re-ran against commit `eaa2733` (plus uncommitted `desktop:smoke` flag-propagation fix) on Windows 11 (win32 x64), Node v26.3.0, npm 11.16.0:
+
+- `theia:test` now **PASSES**: 19 files, 203/203 (the 2026-10-27 failure was an environment gap — Electron binary missing under `theia-extensions/mission-control/node_modules` because `theia:install` uses `--ignore-scripts`; the binary has since been installed).
+- `desktop:smoke` now **PASSES** after the flag-propagation fix: main forwards `--orrery-smoke` to the window via `webPreferences.additionalArguments` (`createWindowOptions` → `secureWebPreferences`), since the sandboxed preload never sees the launcher's `process.argv`. Added covering tests in `electron/main.test.ts` and `packages/electron-security-policy/src/index.test.ts`.
+- Full re-run tally **14/14 PASS**: typecheck clean; `npx vitest run` 61 files, 800 passed, 4 skipped; `npm run build` OK; mission and daemon smokes print their pass lines; `desktop:build`, `desktop:package` (`ORRERY_UNSIGNED_LOCAL=1`), and `desktop:smoke` ("Packaged desktop smoke passed."); Playwright e2e 3/3; `theia:typecheck`, `theia:test`, `theia-app:typecheck`, `theia-app:test` (39/39), `theia-app:smoke` all pass.
+- Remaining non-blocking noise unchanged: postcss `@import` order warning for `mission-replay-debugger.css`, `disconnect failed` teardown noise in `theia-app:test`.
+- No commits made in this session; changes are uncommitted working-tree edits.
+
+## Addendum — 2026-10-29 (evening): Relume-native motion pass, all gates green
+
+Re-ran all 14 gates after the Relume-inspired native motion layer (no Tailwind/shadcn deps; CSS `[data-reveal]`/`[data-stagger]`/`.meter`/`.beacon`/`[data-tick]` + `useReveal`/`useCountUp` hooks wired into welcome-state, runtime-timeline, lifecycle-rail, and replay debugger):
+
+- `typecheck` **PASS** — clean.
+- `npx vitest run` **PASS** — full suite green (one assertion updated: boot-sequence welcome assertion now uses `toHaveClass` since reveal adds `is-visible`).
+- `npm run build` **PASS** — and the long-standing postcss `@import` order warning is now **fixed**: `mission-replay-debugger.css` import moved to the top of `styles.css`, warning gone.
+- `mission:smoke` / `daemon:smoke` **PASS** — pass lines printed.
+- `desktop:build` **PASS**; `desktop:package` **PASS** (with `ORRERY_UNSIGNED_LOCAL=1`; plain packaging still exits 1 on code-signing, expected for unsigned local builds); `desktop:smoke` **PASS** ("Packaged desktop smoke passed.").
+- `test:e2e` **PASS** — 3/3 Playwright specs.
+- `theia:typecheck` **PASS**; `theia:test` **PASS** (203/203); `theia-app:typecheck` **PASS**; `theia-app:test` **PASS** (39/39; known non-fatal `disconnect failed` teardown noise unchanged); `theia-app:smoke` **PASS**.
+
+**Tally: 14/14 PASS.** Remaining noise: none blocking (postcss warning eliminated).
+
+## Addendum — 2026-10-29 (night): welcome launcher + motion fixes, all gates green
+
+Re-ran all 14 gates after adding the pre-boot welcome launcher (`src/components/launch-screen.tsx` + `LaunchGate` in `src/main.tsx`) and a reduced-motion fix for the launcher emblem:
+
+- Launcher: isolate / approve / verify pillars, live mission count via `useCountUp`, single "Enter Mission Control" action (Enter/Space), once per session via `orrery.launched` flag, skipped automatically in packaged smoke mode (`reportSmokeReadiness` present) so the readiness gate never waits on a click. Shell and boot tests render `AppShell` directly, untouched by the gate.
+- Fix: the universal `prefers-reduced-motion` kill-switch zeroed the launcher emblem's entrance animation but left its base `opacity: 0` — the emblem was invisible in reduced-motion browsers (including the review harness). The reduced-motion block now pins `.launch-orrery` to its final resting state, matching the boot sequence's treatment. Verified live at opacity 0.95 after reload.
+- `e2e/mission-flow.spec.ts` gains an `enterMissionControl` click-through after each fresh-context load.
+
+- `typecheck` **PASS** — clean.
+- `npx vitest run` **PASS** — 62 files, 804 passed, 4 skipped (includes the new 4-test `launch-screen.test.tsx`).
+- `npm run build` **PASS** — no warnings.
+- `mission:smoke` / `daemon:smoke` **PASS** — pass lines printed.
+- `desktop:build` **PASS**; `desktop:package` **PASS** (with `ORRERY_UNSIGNED_LOCAL=1`); `desktop:smoke` **PASS** ("Packaged desktop smoke passed.").
+- `test:e2e` **PASS** — 3/3 Playwright specs.
+- `theia:typecheck` **PASS**; `theia:test` **PASS** (203/203); `theia-app:typecheck` **PASS**; `theia-app:test` **PASS** (39/39; known non-fatal `disconnect failed` teardown noise unchanged); `theia-app:smoke` **PASS**.
+
+**Tally: 14/14 PASS.** Remaining noise: none blocking.
+
 ## Concerns for release
 
 - **Packaged desktop app is unverified end-to-end:** `desktop:package` succeeds but `desktop:smoke` fails, so the shipped `.exe` has no green startup check on this machine. Do not treat the desktop artifact as release-verified until the smoke failure is root-caused (likely needs a GUI-capable machine or a main-process log).
