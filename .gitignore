@@ -38,5 +38,8 @@ runtime/
 # Isolated agent implementation worktrees.
 .worktrees/
 
+# Local agent planning scratch (never committed).
+.hermes/
+
 .vercel
 .env*
