@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -22,7 +22,11 @@ await rm(smokeRoot, { recursive: true, force: true });
 await mkdir(smokeRoot, { recursive: true });
 const root = await mkdtemp(join(smokeRoot, "repository-"));
 const runtimeParent = await mkdtemp(join(tmpdir(), "orrery-smoke-runtime-"));
-const workspaceRoot = join(runtimeParent, "runtime");
+// The service canonicalizes both roots with realpath() before deriving the worktree path, so
+// the expectation must hash the canonical forms too. Under a Windows temp root with an 8.3
+// short-name alias the spelled paths differ and the assertion would otherwise fail.
+const canonicalRoot = await realpath(root);
+const workspaceRoot = join(await realpath(runtimeParent), "runtime");
 const missionId = crypto.randomUUID();
 const reviewerId = "task-8-smoke@example.test";
 const timestamp = "2026-08-28T08:00:00.000Z";
@@ -90,7 +94,7 @@ try {
   const initialRevision = await gitRevision("main", root);
   const mission = buildMission();
    const workspaceService = new GitWorkspaceService({ git, retryRepository: new FilePromotionRetryRepository(root), workspaceRoot });
-   const expectedWorktreePath = join(workspaceRoot, "worktrees", createHash("sha256").update(process.platform === "win32" ? root.toLowerCase() : root).digest("hex"), `mission-${missionId}`);
+   const expectedWorktreePath = join(workspaceRoot, "worktrees", createHash("sha256").update(process.platform === "win32" ? canonicalRoot.toLowerCase() : canonicalRoot).digest("hex"), `mission-${missionId}`);
   const commandRunner = new AllowlistedCommandRunner({
     worktreePath: expectedWorktreePath,
     allowlist: [{ executable: process.execPath, args: ["--check", "scripts/desktop-smoke.mjs"] }],
