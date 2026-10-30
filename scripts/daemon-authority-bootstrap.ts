@@ -53,6 +53,12 @@ export interface DaemonAuthorityOptions {
   readonly gitInspector?: GitInspector;
   readonly trustedApprovalContext?: TrustedApprovalContext;
   readonly trustedApprovalKey?: string;
+  /**
+   * Wall-clock budget for a single verification command. Must exceed the longest
+   * verification the mission scheduler will actually run, otherwise a healthy
+   * command is killed by the runner's timeout and the mission fails early.
+   */
+  readonly commandTimeoutMs?: number;
 }
 
 export async function createDaemonAuthority(runtimeDirectory: string, options: DaemonAuthorityOptions = {}): Promise<DaemonAuthorityBootstrap> {
@@ -78,7 +84,11 @@ export async function createDaemonAuthority(runtimeDirectory: string, options: D
   const trustedVerificationCommand: VerificationCommand = { executable: process.execPath, args: ["--check", "scripts/desktop-smoke.mjs"] };
   const trustedVerificationCommands = options.trustedVerificationCommands ?? [trustedVerificationCommand];
   if (trustedVerificationCommands.length === 0) throw new Error("At least one trusted verification command is required.");
-  const commandRunner = new AllowlistedCommandRunner({ worktreePath: workspaceRoot, allowlist: [...trustedVerificationCommands] });
+  const commandRunner = new AllowlistedCommandRunner({
+    worktreePath: workspaceRoot,
+    allowlist: [...trustedVerificationCommands],
+    ...(options.commandTimeoutMs === undefined ? {} : { timeoutMs: options.commandTimeoutMs }),
+  });
   const unusedRunnerRepository: MissionRepository = {
     load: (missionId) => missionStore.load(missionId),
     save: async () => { throw new Error("Daemon mission runs require the authority-owned durable repository adapter."); },

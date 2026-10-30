@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { Mission, MissionEvent } from "../packages/mission-control-domain/src/index";
-import { MissionControlClient, TcpLineTransport } from "../packages/mission-control-client/src/index";
+import { MissionControlClient, MissionControlError, TcpLineTransport } from "../packages/mission-control-client/src/index";
 import { DaemonServer, FileMissionStore } from "../packages/mission-control-daemon/src/index";
 import { createDaemonAuthority } from "./daemon-authority-bootstrap";
 import { digestReviewContent } from "../packages/mission-control-daemon/src/review-content";
@@ -46,6 +46,9 @@ export async function runAuthoritativeDaemonSmoke(trustedReviewer = "daemon-smok
     const canonicalRepository = await realpath(repositoryPath);
     let bootstrap = await createDaemonAuthority(runtimePath, {
       trustedVerificationCommands: [longVerificationCommand, quickVerificationCommand],
+      // A 30s command budget would tie with LONG_VERIFICATION_MS, so a slow runner could kill
+      // the long verification on its own and settle the run before cancellation arrives.
+      commandTimeoutMs: LONG_VERIFICATION_MS * 4,
       verificationCommandResolver: (_repository, context) => context.title === "Cancel active verification"
         ? longVerificationCommand
         : quickVerificationCommand,
@@ -81,7 +84,11 @@ export async function runAuthoritativeDaemonSmoke(trustedReviewer = "daemon-smok
       missionId: cancelledMission.id,
       planRevisionId: cancelledMission.plan.id,
     }, repositoryPath));
-    const runOutcome = runPromise.then(() => "completed" as const, () => "aborted" as const);
+    let runError: unknown;
+    const runOutcome = runPromise.then(() => "completed" as const, (error: unknown) => {
+      runError = error;
+      return "aborted" as const;
+    });
     // Captures when the run actually settled, not when this test later gets around to observing
     // it. The callback is registered before any polling, cancel, or replay round-trips exist, so
     // under a loaded suite the timestamp absorbs only the abort itself — not the replay latency
@@ -107,7 +114,17 @@ export async function runAuthoritativeDaemonSmoke(trustedReviewer = "daemon-smok
       intentId: id("cancel"),
       missionId: cancelledMission.id,
       runId: activeRunId,
-    }, repositoryPath));
+    }, repositoryPath)).catch(async (error: unknown) => {
+      if (!(error instanceof MissionControlError) || error.code !== "invalid_run") throw error;
+      await runOutcome;
+      const settled = await canceller.getMission(cancelledMission.id);
+      const lastEvent = settled.events.at(-1);
+      const reason = runError instanceof Error ? runError.message : String(runError);
+      throw new Error(
+        `Run settled on its own before cancellation (mission status: ${settled.status}; completionSummary: ${settled.completionSummary ?? "none"}; last event: ${lastEvent?.kind} "${lastEvent?.title}" ${lastEvent?.detail ?? ""}; run error: ${reason}).`,
+        { cause: error },
+      );
+    });
     const cancellationEvents = await replayUntil(canceller, cancelledMission.id, cancellationCursor, (event) => event.kind === "cancellation" && event.runId === activeRunId);
     /*
      * The settle-time bound is what distinguishes a real abort from merely waiting for the long
