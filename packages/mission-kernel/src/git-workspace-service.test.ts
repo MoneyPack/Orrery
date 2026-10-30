@@ -829,6 +829,7 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
     const reviewedSnapshot = await baseline.inspectChanges(workspace);
     let concurrentRevision = "";
     let injected = false;
+    const canonicalRepositoryRoot = await realpath(repositoryRoot);
     const makeConcurrentCommit = async () => {
       await writeFile(join(repositoryRoot, "user-work.txt"), "must survive\n");
       await realGit(["add", "user-work.txt"], repositoryRoot);
@@ -837,13 +838,13 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
     };
     const racingGit: GitCommand = async (args, cwd, options) => {
       const operationIndex = args.findIndex((arg) => arg === "merge");
-      if (!injected && cwd === repositoryRoot && operationIndex >= 0) {
+      if (!injected && cwd === canonicalRepositoryRoot && operationIndex >= 0) {
         injected = true;
         await makeConcurrentCommit();
       }
       if (
         !injected &&
-        cwd === repositoryRoot &&
+        cwd === canonicalRepositoryRoot &&
         args[args.indexOf("update-ref") + 1] === "refs/heads/main"
       ) {
         injected = true;
@@ -861,6 +862,7 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
         ACTIVE_APPROVAL_EXPIRY,
       ),
     ).resolves.toMatchObject({ status: "conflict", reason: "Target branch changed during promotion" });
+    expect(injected).toBe(true);
     expect(await serviceRevision(repositoryRoot, "main")).toBe(concurrentRevision);
     expect(await readFile(join(repositoryRoot, "user-work.txt"), "utf8")).toBe("must survive\n");
   });
@@ -874,11 +876,12 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
       const reviewedSnapshot = await baseline.inspectChanges(workspace);
       const movedRevision = await createMovedRevision(repositoryRoot, workspace.initialRevision, movement);
       let injected = false;
+      const canonicalRepositoryRoot = await realpath(repositoryRoot);
       const racingGit: GitCommand = async (args, cwd, options) => {
         const updateRefIndex = args.indexOf("update-ref");
         if (
           !injected &&
-          cwd === repositoryRoot &&
+          cwd === canonicalRepositoryRoot &&
           updateRefIndex >= 0 &&
           args[updateRefIndex + 1] === "refs/heads/main"
         ) {
@@ -991,12 +994,13 @@ describe("GitWorkspaceService", { timeout: 60_000 }, () => {
       if (first.status !== "conflict" || !first.retry) throw new Error("Expected retry token");
       const movedRevision = await createMovedRevision(repositoryRoot, workspace.initialRevision, movement);
       let injected = false;
+      const canonicalRepositoryRoot = await realpath(repositoryRoot);
       const racingService = new GitWorkspaceService({
         git: async (args, cwd, options) => {
           const updateRefIndex = args.indexOf("update-ref");
           if (
             !injected &&
-            cwd === repositoryRoot &&
+            cwd === canonicalRepositoryRoot &&
             updateRefIndex >= 0 &&
             args[updateRefIndex + 1] === "refs/heads/main"
           ) {
