@@ -12,4 +12,10 @@ describe("production content security policy", () => {
     expect(policy).not.toContain("'unsafe-inline'");
     expect(policy).not.toContain("frame-ancestors");
   });
+
+  it("ships a hosting headers config sending frame-ancestors 'none'", () => {
+    const headers = readFileSync(resolve(process.cwd(), "public/_headers"), "utf8");
+
+    expect(headers).toMatch(/Content-Security-Policy:[^\n]*frame-ancestors 'none'/);
+  });
 });

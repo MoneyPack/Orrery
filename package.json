@@ -7,7 +7,7 @@
   "workspaces": [
     "packages/*"
   ],
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -24,6 +24,7 @@
     "mission:smoke": "vite-node scripts/real-mission-smoke.ts",
     "daemon:smoke": "vite-node scripts/authoritative-daemon-smoke.ts",
     "daemon": "vite-node scripts/orrery-daemon.ts",
+    "telemetry:query": "vite-node scripts/telemetry-query.ts",
     "tui": "vite-node scripts/orrery-tui.ts",
     "tui:standalone": "vite-node scripts/orrery-tui-standalone.ts",
     "desktop:make": "npm run build && npm run desktop:build && electron-builder --config electron-builder.config.cjs",

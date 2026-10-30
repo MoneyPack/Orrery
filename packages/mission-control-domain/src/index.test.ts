@@ -34,12 +34,12 @@ describe("mission control domain package boundary", () => {
   });
 
   it("contains no forbidden runtime imports", () => {
-    const source = ["index.ts", "mission.ts", "fixture-runtime.ts"]
+    const source = ["index.ts", "mission.ts", "fixture-runtime.ts", "capabilities.ts", "permission.ts", "capability-permission.ts"]
       .map((file) => readFileSync(resolve(process.cwd(), "packages/mission-control-domain/src", file), "utf8"))
       .join("\n");
 
     expect(source).not.toMatch(
-      /(?:electron|react|theia|@theia\/|node:fs|node:process|from ["']fs|from ["']process)/i,
+      /(?:electron|react|theia|@theia\/|node:|from ["']fs|from ["']process)/i,
     );
   });
 });

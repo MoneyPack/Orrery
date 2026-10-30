@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="Orrery Mission Control banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1012"/>
+      <stop offset="55%" stop-color="#14181b"/>
+      <stop offset="100%" stop-color="#090b0d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="46%" r="55%">
+      <stop offset="0%" stop-color="#c98a36" stop-opacity=".35"/>
+      <stop offset="60%" stop-color="#c98a36" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#c98a36" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ringb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e3a94e"/>
+      <stop offset="50%" stop-color="#c98a36" stop-opacity=".3"/>
+      <stop offset="100%" stop-color="#e3a94e"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e9ecea"/>
+      <stop offset="70%" stop-color="#e9ecea"/>
+      <stop offset="100%" stop-color="#e3a94e"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+
+  <!-- faint grid -->
+  <g stroke="#e9ecea" stroke-opacity=".05" stroke-width="1">
+    <line x1="0" y1="128" x2="1280" y2="128"/>
+    <line x1="0" y1="256" x2="1280" y2="256"/>
+    <line x1="0" y1="384" x2="1280" y2="384"/>
+    <line x1="0" y1="512" x2="1280" y2="512"/>
+    <line x1="128" y1="0" x2="128" y2="640"/>
+    <line x1="384" y1="0" x2="384" y2="640"/>
+    <line x1="640" y1="0" x2="640" y2="640"/>
+    <line x1="896" y1="0" x2="896" y2="640"/>
+    <line x1="1152" y1="0" x2="1152" y2="640"/>
+  </g>
+
+  <!-- left: orrery device -->
+  <g transform="translate(200,320)">
+    <ellipse rx="150" ry="112" fill="none" stroke="url(#ringb)" stroke-width="3"/>
+    <g>
+      <ellipse rx="102" ry="102" fill="none" stroke="#c98a36" stroke-width="2" stroke-dasharray="9 7" opacity=".7"/>
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="20s" repeatCount="indefinite"/>
+    </g>
+    <g>
+      <circle cx="150" cy="0" r="11" fill="#e9ecea" stroke="#e3a94e" stroke-width="3"/>
+      <circle cx="150" cy="0" r="4" fill="#c98a36"/>
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="10s" repeatCount="indefinite"/>
+    </g>
+    <circle r="44" fill="#c98a36"/>
+    <circle r="44" fill="none" stroke="#e8b96c" stroke-width="2"/>
+    <line x1="0" y1="-22" x2="0" y2="22" stroke="#19120a" stroke-width="5" stroke-linecap="round"/>
+    <line x1="-22" y1="0" x2="22" y2="0" stroke="#19120a" stroke-width="5" stroke-linecap="round"/>
+    <circle r="7" fill="#19120a"/>
+  </g>
+
+  <!-- right: title block -->
+  <g font-family="Segoe UI, Inter, system-ui, sans-serif">
+    <text x="430" y="255" font-size="72" font-weight="700" fill="url(#title)" letter-spacing="1">Orrery</text>
+    <text x="432" y="315" font-size="44" font-weight="600" fill="#e3a94e" letter-spacing="6">MISSION CONTROL</text>
+    <text x="432" y="360" font-size="22" fill="#a3acb0">Local-first mission planning, execution &amp; review</text>
+    <g font-size="19" font-weight="600">
+      <rect x="432" y="390" width="150" height="40" rx="20" fill="none" stroke="#39424a" stroke-width="1.5"/>
+      <text x="455" y="417" fill="#e9ecea">Electron</text>
+      <rect x="594" y="390" width="170" height="40" rx="20" fill="none" stroke="#39424a" stroke-width="1.5"/>
+      <text x="617" y="417" fill="#e9ecea">Theia 1.75</text>
+      <rect x="776" y="390" width="150" height="40" rx="20" fill="none" stroke="#39424a" stroke-width="1.5"/>
+      <text x="805" y="417" fill="#e9ecea">Daemon</text>
+      <rect x="938" y="390" width="120" height="40" rx="20" fill="none" stroke="#39424a" stroke-width="1.5"/>
+      <text x="965" y="417" fill="#e9ecea">TUI</text>
+    </g>
+    <text x="432" y="480" font-size="20" fill="#6f7a80">Daemon-owned authority — replayable events — signed by default</text>
+  </g>
+
+  <!-- bottom status strip -->
+  <g font-family="Consolas, monospace" font-size="17">
+    <rect x="0" y="600" width="1280" height="40" fill="#090b0d"/>
+    <circle cx="40" cy="620" r="6" fill="#7fb08a">
+      <animate attributeName="opacity" values="1;.35;1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="58" y="626" fill="#7fb08a">daemon: ready</text>
+    <text x="240" y="626" fill="#6f7a80">events: ordered + replayable</text>
+    <text x="560" y="626" fill="#6f7a80">promotion: challenge-gated</text>
+    <text x="880" y="626" fill="#6f7a80">artifacts: signed + checksummed</text>
+  </g>
+</svg>

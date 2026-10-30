@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import type { Duplex, Readable, Writable } from "node:stream";
+import { allow, deny, enforce, type Permission, type PermissionDecision } from "@orrery/mission-control-domain";
 import { approvalKeyFingerprint } from "../packages/mission-control-daemon/src/promotion-approval";
 
 const MAX_BOOTSTRAP_BYTES = 64 * 1024;
@@ -26,6 +27,30 @@ export function createBootstrapFrame(input: BootstrapBinding & { approvalKey: st
 
 export function writeBootstrapFrame(stream: Writable, frame: PromotionBootstrapFrame): void { stream.end(`${JSON.stringify(frame)}\n`); }
 
+export interface BootstrapOwnershipRequest { readonly frame: PromotionBootstrapFrame; readonly expected: BootstrapBinding }
+
+/**
+ * Daemon startup-lock challenge binding as a shared Permission: the response
+ * frame is allowed only when it echoes the lock nonce, the parent/child PIDs,
+ * the instance id, and the challenge. Framing, schema, and key-fingerprint
+ * checks stay with the reader; this is the ownership binding alone.
+ */
+export const bootstrapOwnershipPermission: Permission<BootstrapOwnershipRequest, true> = {
+  system: "startup-lock-ownership",
+  check: bootstrapOwnershipDecision,
+};
+
+export function bootstrapOwnershipDecision(request: BootstrapOwnershipRequest): PermissionDecision<true> {
+  const { frame, expected } = request;
+  return frame.handoffNonce === expected.handoffNonce
+    && frame.parentPid === expected.parentPid
+    && frame.childPid === expected.childPid
+    && frame.instanceId === expected.instanceId
+    && frame.challenge === expected.challenge
+    ? allow()
+    : deny("Managed daemon bootstrap does not match process ownership.");
+}
+
 export async function readBootstrapFrame(stream: Readable, expected: BootstrapBinding, timeoutMs = BOOTSTRAP_TIMEOUT_MS): Promise<PromotionBootstrapFrame> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const text = await Promise.race([
@@ -35,7 +60,7 @@ export async function readBootstrapFrame(stream: Readable, expected: BootstrapBi
   let value: unknown;
   try { value = JSON.parse(text); } catch { throw new Error("Managed daemon bootstrap is malformed."); }
   assertFrame(value);
-  if (value.handoffNonce !== expected.handoffNonce || value.parentPid !== expected.parentPid || value.childPid !== expected.childPid || value.instanceId !== expected.instanceId || value.challenge !== expected.challenge) throw new Error("Managed daemon bootstrap does not match process ownership.");
+  enforce(bootstrapOwnershipDecision({ frame: value, expected }), (reason) => new Error(reason));
   if (approvalKeyFingerprint(value.approvalKey) !== value.approvalKeyFingerprint) throw new Error("Managed daemon bootstrap key fingerprint is invalid.");
   return value;
 }

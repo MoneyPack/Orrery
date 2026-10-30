@@ -115,4 +115,52 @@ describe("tool approval capability", () => {
     expect(() => canonicalize(() => undefined)).toThrow(/unsupported value/);
     expect(canonicalize({ a: undefined, b: 1 })).toBe('{"b":1}');
   });
+
+  it("check returns the verify-and-spend result as a decision, spending exactly once", () => {
+    const service = new ToolApprovalService();
+    const capability = service.issue(request);
+    const decision = service.check({ ...request, capability });
+    expect(decision.allowed).toBe(true);
+    const replay = service.check({ ...request, capability });
+    expect(replay).toEqual({ allowed: false, reason: "Tool approval was already used." });
+  });
+
+  it("check carries verify's exact denial text for every failure class", () => {
+    const service = new ToolApprovalService();
+    const capability = service.issue(request);
+    expect(service.check({ ...request, argumentsDigest: digestToolArguments({ path: "x" }), capability }))
+      .toEqual({ allowed: false, reason: "Tool approval does not match the request." });
+    expect(service.check({ ...request, capability: "broken" }))
+      .toEqual({ allowed: false, reason: "Tool approval signature is invalid." });
+  });
+
+  it("revokeCapability withdraws an outstanding capability so verify fails closed", () => {
+    const service = new ToolApprovalService();
+    const capability = service.issue(request);
+    const encoded = capability.split(".")[0];
+    const nonce = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")).nonce as string;
+    service.revokeCapability(nonce);
+    expect(() => service.verify({ ...request, capability })).toThrow(/already used/);
+  });
+
+  it("revokeCapability ignores unknown and already-spent nonces without re-arming them", () => {
+    const service = new ToolApprovalService();
+    const capability = service.issue(request);
+    const encoded = capability.split(".")[0];
+    const nonce = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")).nonce as string;
+    service.revokeCapability("unknown-nonce");
+    expect(service.verify({ ...request, capability }).nonce).toBe(nonce);
+    service.revokeCapability(nonce);
+    expect(() => service.verify({ ...request, capability })).toThrow(/already used/);
+  });
+
+  it("asPermission binds check, approve, and revoke with the tool-approval system name", () => {
+    const service = new ToolApprovalService();
+    const permission = service.asPermission();
+    expect(permission.system).toBe("tool-approval");
+    const capability = permission.approve!(request);
+    const decision = permission.check({ ...request, capability });
+    expect(decision.allowed).toBe(true);
+    permission.revoke!("no-such-nonce");
+  });
 });

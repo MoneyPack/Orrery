@@ -1,0 +1,17 @@
+---
+name: Feature request
+description: Propose a capability or improvement
+labels: [enhancement]
+---
+
+**Problem**
+What user or operator pain does this solve?
+
+**Proposal**
+What should change? Name the packages/surfaces involved.
+
+**Trust-boundary impact**
+Does this touch the daemon, kernel, promotion, signing, or IPC? If yes, how does the boundary stay intact? (New security surface needs an ADR in `docs/superpowers/adrs/`.)
+
+**Acceptance**
+What proves it works? (tests, smokes, docs)

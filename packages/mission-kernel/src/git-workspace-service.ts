@@ -110,16 +110,30 @@ async function validateDirectory(path: string, expectedCanonicalPath: string): P
   }
 }
 
+/**
+ * Creates a private directory if needed and rejects a symlink or junction in its place. The
+ * result intentionally stays in its spelled form: callers that need a canonical base use the
+ * helpers below, because the configured root may carry an OS alias (a Windows 8.3 short name
+ * such as `C:\Users\RUNNER~1\...`, or a symlinked macOS temp root) that `realpath` expands.
+ */
+async function ensurePrivateDirectory(path: string): Promise<void> {
+  await mkdir(path, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "EEXIST") throw error;
+  });
+  const metadata = await lstat(path);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error("workspace path must be a real directory beneath the private runtime root");
+  }
+  await chmodPrivate(path);
+}
+
 export function defaultWorkspaceRoot(): string {
   return join(tmpdir(), "orrery-runtime");
 }
 
 async function preparePrivateDirectory(path: string): Promise<void> {
-  await mkdir(path, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== "EEXIST") throw error;
-  });
+  await ensurePrivateDirectory(path);
   await validateDirectory(path, resolve(path));
-  await chmodPrivate(path);
 }
 
 async function chmodPrivate(path: string): Promise<void> {
@@ -245,14 +259,36 @@ async function applyTargetRevision(
 export class GitWorkspaceService implements WorkspaceService {
   private readonly git: GitCommand;
   private readonly retryRepository: PromotionRetryRepository;
-  private readonly workspaceRoot: string;
+  private readonly configuredWorkspaceRoot: string;
   private readonly now: () => Date;
 
   constructor(options: GitWorkspaceServiceOptions = {}) {
     this.git = options.git ?? defaultGit;
     this.retryRepository = options.retryRepository ?? new InMemoryPromotionRetryRepository();
-    this.workspaceRoot = resolve(options.workspaceRoot ?? defaultWorkspaceRoot());
+    this.configuredWorkspaceRoot = options.workspaceRoot ?? defaultWorkspaceRoot();
     this.now = options.now ?? (() => new Date());
+  }
+
+  /**
+   * Resolves the private runtime root to its canonical form after ensuring it exists. The root
+   * may be created through an OS alias (a Windows 8.3 short name such as `C:\Users\RUNNER~1\...`,
+   * or a symlinked macOS temp root), and every path derived from it must use one consistent,
+   * canonical spelling so later identity checks compare like with like.
+   */
+  private async prepareWorkspaceRootDirectory(): Promise<string> {
+    const workspaceRoot = resolve(this.configuredWorkspaceRoot);
+    await ensurePrivateDirectory(workspaceRoot);
+    return realpath(workspaceRoot);
+  }
+
+  /** Canonical form of an already-created runtime root, rejecting a redirected root itself. */
+  private async existingWorkspaceRootDirectory(): Promise<string> {
+    const workspaceRoot = resolve(this.configuredWorkspaceRoot);
+    const metadata = await lstat(workspaceRoot);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error("workspace path must be a real directory beneath the private runtime root");
+    }
+    return realpath(workspaceRoot);
   }
 
   async createMissionWorkspace(input: CreateWorkspaceInput): Promise<MissionWorkspace> {
@@ -264,7 +300,10 @@ export class GitWorkspaceService implements WorkspaceService {
     let repositoryRoot: string;
     try {
       repositoryRoot = await realpath(input.repositoryRoot);
-      if (isContainedPath(this.workspaceRoot, repositoryRoot) || this.workspaceRoot === repositoryRoot) {
+      // Compare canonical to canonical: the configured root may be spelled through an OS alias.
+      // A root that does not exist yet cannot contain anything, so its spelled form is safe there.
+      const configuredWorkspaceRoot = await realpath(this.configuredWorkspaceRoot).catch(() => resolve(this.configuredWorkspaceRoot));
+      if (isContainedPath(configuredWorkspaceRoot, repositoryRoot) || configuredWorkspaceRoot === repositoryRoot) {
         throw new Error("workspaceRoot must be outside the repository");
       }
       const topLevel = (await safeGit(["rev-parse", "--show-toplevel"], repositoryRoot)).stdout.trim();
@@ -283,7 +322,8 @@ export class GitWorkspaceService implements WorkspaceService {
 
     const missionBranch = `orrery/mission-${input.missionId}`;
     const id = `mission-${input.missionId}`;
-    const worktreesRoot = await prepareWorktreesRoot(this.workspaceRoot, repositoryRoot);
+    const workspaceRoot = await this.prepareWorkspaceRootDirectory();
+    const worktreesRoot = await prepareWorktreesRoot(workspaceRoot, repositoryRoot);
     const worktreePath = join(worktreesRoot, id);
     try {
       await safeGit(["show-ref", "--verify", "--quiet", `refs/heads/${missionBranch}`], repositoryRoot);
@@ -326,7 +366,13 @@ export class GitWorkspaceService implements WorkspaceService {
     });
     const expectedId = `mission-${workspace.missionId}`;
     const expectedBranch = `orrery/mission-${workspace.missionId}`;
-    const expectedWorktreesRoot = join(this.workspaceRoot, "worktrees", repositoryRuntimeKey(repositoryRoot));
+    // Every derived path must share the canonical base the workspace was created from, so a
+    // spelled alias never reads as a tampered identity. A root that is itself a junction is
+    // rejected here; a redirected child is rejected by the validateDirectory calls below.
+    const workspaceRoot = await this.existingWorkspaceRootDirectory().catch(() => {
+      throw new Error("Invalid workspace identity");
+    });
+    const expectedWorktreesRoot = join(workspaceRoot, "worktrees", repositoryRuntimeKey(repositoryRoot));
     const expectedWorktreePath = join(expectedWorktreesRoot, expectedId);
     if (
       repositoryRoot !== workspace.repositoryRoot ||
@@ -336,7 +382,7 @@ export class GitWorkspaceService implements WorkspaceService {
     ) {
       throw new Error("Invalid workspace identity");
     }
-    await validateDirectory(this.workspaceRoot, this.workspaceRoot).catch(() => {
+    await validateDirectory(workspaceRoot, workspaceRoot).catch(() => {
       throw new Error("Invalid workspace identity");
     });
     await validateDirectory(expectedWorktreesRoot, expectedWorktreesRoot).catch(() => {
@@ -524,12 +570,13 @@ export class GitWorkspaceService implements WorkspaceService {
       validateMissionId(workspace.missionId);
       const expectedId = `mission-${workspace.missionId}`;
       const expectedBranch = `orrery/mission-${workspace.missionId}`;
-       const expectedWorktreesRoot = join(this.workspaceRoot, "worktrees", repositoryRuntimeKey(repositoryRoot));
+       const workspaceRoot = await this.existingWorkspaceRootDirectory();
+       const expectedWorktreesRoot = join(workspaceRoot, "worktrees", repositoryRuntimeKey(repositoryRoot));
        const expectedWorktreePath = join(expectedWorktreesRoot, expectedId);
       if (workspace.id !== expectedId || workspace.missionBranch !== expectedBranch || workspace.worktreePath !== expectedWorktreePath || workspace.repositoryRoot !== repositoryRoot || workspace.initialRevision !== token.missionParent) {
         throw new Error("Invalid promotion retry workspace");
       }
-       await validateDirectory(this.workspaceRoot, this.workspaceRoot);
+       await validateDirectory(workspaceRoot, workspaceRoot);
        await validateDirectory(expectedWorktreesRoot, expectedWorktreesRoot);
       await validateDirectory(workspace.worktreePath, workspace.worktreePath);
       const worktreeTopLevel = (await safeGit(["rev-parse", "--show-toplevel"], workspace.worktreePath)).stdout.trim();
@@ -550,7 +597,7 @@ export class GitWorkspaceService implements WorkspaceService {
        const tree = (await safeGit(["show", "-s", "--format=%T", missionRevision], repositoryRoot)).stdout.trim();
        if (tree !== token.missionTree) throw new Error("Promotion retry commit has an unexpected tree");
 
-       const promotionWorktreesRoot = await prepareWorktreesRoot(this.workspaceRoot, repositoryRoot);
+       const promotionWorktreesRoot = await prepareWorktreesRoot(await this.existingWorkspaceRootDirectory(), repositoryRoot);
       promotionWorktreePath = join(promotionWorktreesRoot, `promotion-${randomUUID()}`);
       await safeGit(["worktree", "add", "--detach", promotionWorktreePath, targetRevision], repositoryRoot);
       try {

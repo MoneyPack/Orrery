@@ -1,6 +1,7 @@
 import { Moon, Planet, Sun } from "@phosphor-icons/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMissions } from "../state/mission-context";
+import { useReveal } from "../hooks/use-reveal";
 import { BootSequence, hasBootedThisSession } from "./boot-sequence";
 import { LifecycleRail } from "./lifecycle-rail";
 import { MissionList } from "./mission-list";
@@ -20,6 +21,7 @@ export function AppShell({ boot = !hasBootedThisSession() }: { boot?: boolean })
   const [booting, setBooting] = useState(boot);
   const [entered, setEntered] = useState(!boot);
   const dialogTrigger = useRef<HTMLElement | null>(null);
+  const welcomeReveal = useReveal<HTMLElement>();
   const active = missions.missions.find((mission) => mission.id === activeId) ?? missions.missions[0];
   const finishBoot = useCallback(() => { setBooting(false); setEntered(true); }, []);
 
@@ -91,11 +93,11 @@ export function AppShell({ boot = !hasBootedThisSession() }: { boot?: boolean })
             </div>
           </main>
         ) : (
-          <main className="welcome-state">
+          <main className="welcome-state" ref={welcomeReveal}>
             <OrreryMark className="welcome-orrery" id="welcome" />
-            <span className="eyebrow">No active mission</span><h1>Delegated work,<br />under <em>observation.</em></h1>
-            <p>Create a mission to bind its goal, plan, isolated workspace, permissions, evidence, and review decision.</p>
-            <ol className="welcome-steps" aria-label="Mission loop">
+            <span className="eyebrow" data-reveal>No active mission</span><h1 data-reveal>Delegated work,<br />under <em>observation.</em></h1>
+            <p data-reveal>Create a mission to bind its goal, plan, isolated workspace, permissions, evidence, and review decision.</p>
+            <ol className="welcome-steps" data-stagger aria-label="Mission loop">
               <li><b>01</b><span>Define the outcome</span></li>
               <li><b>02</b><span>Approve the plan</span></li>
               <li><b>03</b><span>Run in isolation</span></li>

@@ -27,6 +27,7 @@ export interface SessionLike {
 
 export interface WindowWebPreferences {
   preload?: string;
+  additionalArguments?: string[];
   contextIsolation: true;
   sandbox: true;
   nodeIntegration: false;
@@ -35,9 +36,10 @@ export interface WindowWebPreferences {
 }
 
 /** The immutable webPreferences baseline every Orrery window must use. */
-export function secureWebPreferences(preload?: string): WindowWebPreferences {
+export function secureWebPreferences(preload?: string, additionalArguments?: string[]): WindowWebPreferences {
   return {
     ...(preload === undefined ? {} : { preload }),
+    ...(additionalArguments === undefined ? {} : { additionalArguments: [...additionalArguments] }),
     contextIsolation: true,
     sandbox: true,
     nodeIntegration: false,

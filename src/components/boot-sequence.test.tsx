@@ -28,7 +28,7 @@ describe("Boot sequence", () => {
     expect(boot).toHaveTextContent("orrery.missions.v1");
     expect(boot).toHaveTextContent("00 restored");
     expect(boot).toHaveTextContent("dark / motion");
-    expect(screen.getByRole("main")).toHaveAttribute("class", "welcome-state");
+    expect(screen.getByRole("main")).toHaveClass("welcome-state");
 
     await act(async () => { vi.advanceTimersByTime(3400); });
     expect(boot).toHaveAttribute("data-phase", "exit");

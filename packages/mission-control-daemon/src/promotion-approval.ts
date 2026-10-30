@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { allow, deny, type Permission, type PermissionDecision } from "@orrery/mission-control-domain";
 
 /**
  * Threat model: promotion approval proves the request came from the Electron main process that
@@ -19,7 +20,8 @@ export interface PromotionApprovalRequest {
 }
 
 export interface VerifiedPromotionApproval { readonly nonce: string; readonly expiresAt: string; readonly reviewerId: string }
-export interface PromotionApprovalVerifier { verify(input: PromotionApprovalRequest & { readonly capability: string }): VerifiedPromotionApproval }
+export interface PromotionApprovalVerifier {
+  verify(input: PromotionApprovalRequest & { readonly capability: string }): VerifiedPromotionApproval }
 export interface PromotionApprovalIssuer { issue(input: PromotionApprovalRequest): string }
 export interface TrustedApprovalContext { readonly now?: () => string; readonly id?: () => string; readonly maximumTtlMs?: number; readonly approvalKey?: string }
 
@@ -55,6 +57,7 @@ export class TrustedApprovalService implements PromotionApprovalIssuer {
 }
 
 export class PinnedApprovalVerifier implements PromotionApprovalVerifier {
+  readonly system = "promotion-approval";
   private readonly key: Buffer;
   private readonly reviewerId: string;
   private readonly now: () => string;
@@ -84,6 +87,28 @@ export class PinnedApprovalVerifier implements PromotionApprovalVerifier {
     if (expiresAt - issuedAt > this.maximumTtlMs) throw new Error("Promotion approval lifetime exceeds the maximum.");
     if (expiresAt <= now) throw new Error("Promotion approval expired.");
     return { nonce: payload.nonce, expiresAt: payload.expiresAt, reviewerId: this.reviewerId };
+  }
+
+  /**
+   * Non-throwing form of verify for the shared Permission pattern: the same pinned-key
+   * checks and exact-context binding, returned as a decision instead of thrown.
+   */
+  check(input: PromotionApprovalRequest & { readonly capability: string }): PermissionDecision<VerifiedPromotionApproval> {
+    try {
+      return allow(this.verify(input));
+    } catch (error) {
+      return deny(error instanceof Error ? error.message : "Promotion approval is invalid.");
+    }
+  }
+
+  /**
+   * The promotion-approval system as a shared Permission: check is the non-throwing verify.
+   * There is no approve or revoke here — minting lives with TrustedApprovalService in the
+   * lock-owning main process, and replay protection lives with the daemon authority's
+   * durable store, not with this verifier.
+   */
+  asPermission(): Permission<PromotionApprovalRequest & { capability: string }, VerifiedPromotionApproval> {
+    return { system: this.system, check: (input) => this.check(input) };
   }
 }
 

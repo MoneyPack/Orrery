@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -113,7 +113,7 @@ describe("daemon authority bootstrap", { timeout: 60_000 }, () => {
       const runtime = join(parent, "runtime");
       const repositoryRoot = join(parent, "repository");
       await mkdir(repositoryRoot);
-      const gitInspector: GitInspector = { inspect: async () => ({ canonicalRoot: repositoryRoot, gitIdentity: "fixture-git" }) };
+      const gitInspector: GitInspector = { inspect: async (path) => ({ canonicalRoot: path, gitIdentity: "fixture-git" }) };
       const first = await createDaemonAuthority(runtime, { gitInspector });
       const proposal = await first.registry.propose(repositoryRoot);
       const approved = await first.registry.approve({ proposalId: proposal.proposalId, fingerprint: proposal.fingerprint, approvalNonce: proposal.approvalNonce });
@@ -132,7 +132,7 @@ describe("daemon authority bootstrap", { timeout: 60_000 }, () => {
       expect(reloaded).toMatchObject({ id: mission.id });
       expect(reloaded).not.toHaveProperty("repositoryId");
       await expect(new FileMissionStore(runtime).load(mission.id)).resolves.toMatchObject({ id: mission.id, repositoryId: approved.repositoryId });
-      await expect(restarted.registry.propose(repositoryRoot)).resolves.toMatchObject({ canonicalRoot: repositoryRoot });
+      await expect(restarted.registry.propose(repositoryRoot)).resolves.toMatchObject({ canonicalRoot: await realpath(repositoryRoot) });
     } finally {
       await rm(parent, { recursive: true, force: true });
     }
@@ -144,7 +144,7 @@ describe("daemon authority bootstrap", { timeout: 60_000 }, () => {
       const runtime = join(parent, "runtime");
       const repositoryRoot = join(parent, "repository");
       await mkdir(repositoryRoot);
-      const gitInspector: GitInspector = { inspect: async () => ({ canonicalRoot: repositoryRoot, gitIdentity: "fixture-git" }) };
+      const gitInspector: GitInspector = { inspect: async (path) => ({ canonicalRoot: path, gitIdentity: "fixture-git" }) };
       const first = await createDaemonAuthority(runtime, { gitInspector });
       const proposal = await first.registry.propose(repositoryRoot);
 
@@ -279,7 +279,7 @@ describe("daemon authority bootstrap", { timeout: 60_000 }, () => {
       await writeFile(join(repositoryRoot, "fixture.txt"), "initial\n", "utf8");
       await git(["add", "fixture.txt"], repositoryRoot);
       await git(["commit", "-m", "fixture"], repositoryRoot);
-      const gitInspector: GitInspector = { inspect: async () => ({ canonicalRoot: repositoryRoot, gitIdentity: "fixture-git" }) };
+      const gitInspector: GitInspector = { inspect: async (path) => ({ canonicalRoot: path, gitIdentity: "fixture-git" }) };
       const command = { executable: process.execPath, args: ["-e", "setTimeout(() => {}, 30_000)"] };
       const bootstrap = await createDaemonAuthority(runtime, { gitInspector, trustedVerificationCommands: [command], verificationCommandResolver: () => command });
       const proposal = await bootstrap.registry.propose(repositoryRoot);

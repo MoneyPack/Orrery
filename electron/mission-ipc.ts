@@ -6,7 +6,8 @@ import type {
   PromoteMissionInput, ProposeRepositoryInput, RunMissionInput,
   ReviewPromotionInput,
 } from "./contract";
-import { isTrustedIpcSender } from "./policy";
+import { enforce } from "@orrery/mission-control-domain";
+import { ipcSenderTrustDecision } from "./ipc-permission";
 import {
     MISSION_APPROVE_REPOSITORY_CHANNEL, MISSION_CANCEL_CHANNEL, MISSION_CREATE_CHANNEL,
     MISSION_GET_SNAPSHOT_CHANNEL, MISSION_INSPECT_CHANNEL, MISSION_PROMOTE_CHANNEL,
@@ -82,8 +83,12 @@ function parseReview(value: unknown): ReviewPromotionInput {
   return input as unknown as ReviewPromotionInput;
 }
 function isStringArray(value: unknown): value is string[] { return Array.isArray(value) && value.length > 0 && value.length <= 100 && value.every(isText); }
+function checkTrusted(eventSenderFrame: IpcMainInvokeEvent["senderFrame"], eventMainFrame: IpcMainInvokeEvent["sender"]["mainFrame"], rendererUrl: string) {
+  return ipcSenderTrustDecision({ senderFrame: eventSenderFrame, mainFrame: eventMainFrame, rendererUrl });
+}
+
 function assertTrusted(event: IpcMainInvokeEvent, rendererUrl: string): void {
-  if (!isTrustedIpcSender(event.senderFrame, event.sender.mainFrame, rendererUrl)) throw new Error("Rejected untrusted mission IPC request");
+  enforce(checkTrusted(event.senderFrame, event.sender.mainFrame, rendererUrl), () => new Error("Rejected untrusted mission IPC request"));
 }
 
 export function registerMissionIpc(ipcMain: IpcMain, getRendererUrl: () => string, service: MissionIpcService): void {

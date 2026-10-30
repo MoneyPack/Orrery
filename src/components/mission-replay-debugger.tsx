@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import type { Mission, MissionEvent } from "@orrery/mission-control-domain";
 import { transitionMission } from "@orrery/mission-control-domain";
+import { useReveal } from "../hooks/use-reveal";
 
 interface ReplayStep {
   sequence: number;
@@ -64,6 +65,14 @@ export function MissionReplayDebugger({ mission }: { mission: Mission }) {
   }, [mission]);
 
   const currentReplayState = replaySteps[currentStep];
+  const scrubReveal = useReveal<HTMLDivElement>();
+  const scrubBar = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = scrubBar.current;
+    if (node && replaySteps.length > 1) {
+      node.style.transform = `scaleX(${(currentStep / (replaySteps.length - 1)).toFixed(3)})`;
+    }
+  }, [currentStep, replaySteps.length]);
 
   if (mission.events.length === 0) {
     return (
@@ -74,8 +83,12 @@ export function MissionReplayDebugger({ mission }: { mission: Mission }) {
   }
 
   return (
-    <div className="replay-debugger">
+    <div className="replay-debugger" ref={scrubReveal}>
       <div className="replay-controls">
+        <div className="meter replay-scrub" role="progressbar" aria-label="Replay position"
+          aria-valuemin={1} aria-valuemax={replaySteps.length} aria-valuenow={currentStep + 1}>
+          <i ref={scrubBar as React.RefObject<HTMLDivElement>} />
+        </div>
         <button
           onClick={() => setCurrentStep(0)}
           disabled={currentStep === 0}
@@ -212,9 +225,9 @@ export function MissionReplayDebugger({ mission }: { mission: Mission }) {
             )}
           </div>
 
-          <div className="replay-timeline-panel">
+          <div className="replay-timeline-panel" data-reveal="left">
             <h3>Event Timeline</h3>
-            <div className="timeline-visual">
+            <div className="timeline-visual" data-stagger>
               {replaySteps.map((step, idx) => (
                 <div
                   key={step.sequence}

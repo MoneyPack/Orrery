@@ -11,7 +11,7 @@ import {
   resolvePreloadPath,
   resolveRendererSource,
 } from "./policy";
-import { isSmokeMode, parseSmokeLaunchArgs, registerDesktopSmokeIpc } from "./smoke";
+import { SMOKE_MODE_FLAG, isSmokeMode, parseSmokeLaunchArgs, registerDesktopSmokeIpc } from "./smoke";
 import { registerMissionIpc } from "./mission-ipc";
 import { MissionControlDaemonClient } from "./mission-control-daemon-client";
 
@@ -23,8 +23,8 @@ const missionClient = new MissionControlDaemonClient({
   daemonEntryPath: resolveDaemonEntryPath(mainEntryPath),
 });
 
-async function createMainWindow(): Promise<void> {
-  const window = new BrowserWindow(createWindowOptions(resolvePreloadPath(mainEntryPath)));
+async function createMainWindow(additionalArguments?: string[]): Promise<void> {
+  const window = new BrowserWindow(createWindowOptions(resolvePreloadPath(mainEntryPath), additionalArguments));
   mainWindow = window;
 
   window.once("closed", () => {
@@ -61,7 +61,7 @@ app.whenReady().then(async () => {
       app.exit(exitCode);
     });
   }
-  await createMainWindow();
+  await createMainWindow(smokeLaunch ? [SMOKE_MODE_FLAG] : undefined);
 
   app.on("activate", () => {
     if (mainWindow === null) void createMainWindow();

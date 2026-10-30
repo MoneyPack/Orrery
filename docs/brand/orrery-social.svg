@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Orrery Mission Control social preview">
+  <defs>
+    <linearGradient id="sbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1012"/>
+      <stop offset="55%" stop-color="#14181b"/>
+      <stop offset="100%" stop-color="#090b0d"/>
+    </linearGradient>
+    <radialGradient id="sglow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#c98a36" stop-opacity=".4"/>
+      <stop offset="60%" stop-color="#c98a36" stop-opacity=".1"/>
+      <stop offset="100%" stop-color="#c98a36" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#sbg)"/>
+  <rect width="1200" height="630" fill="url(#sglow)"/>
+  <g transform="translate(600,290)">
+    <ellipse rx="190" ry="140" fill="none" stroke="#e3a94e" stroke-width="4"/>
+    <g>
+      <ellipse rx="128" ry="128" fill="none" stroke="#c98a36" stroke-width="2.5" stroke-dasharray="11 9" opacity=".75"/>
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="22s" repeatCount="indefinite"/>
+    </g>
+    <g>
+      <circle cx="190" cy="0" r="15" fill="#e9ecea" stroke="#e3a94e" stroke-width="4"/>
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="11s" repeatCount="indefinite"/>
+    </g>
+    <circle r="56" fill="#c98a36"/>
+    <circle r="56" fill="none" stroke="#e8b96c" stroke-width="2.5"/>
+    <line x1="0" y1="-28" x2="0" y2="28" stroke="#19120a" stroke-width="6" stroke-linecap="round"/>
+    <line x1="-28" y1="0" x2="28" y2="0" stroke="#19120a" stroke-width="6" stroke-linecap="round"/>
+    <circle r="9" fill="#19120a"/>
+  </g>
+  <g font-family="Segoe UI, Inter, system-ui, sans-serif" text-anchor="middle">
+    <text x="600" y="500" font-size="56" font-weight="700" fill="#e9ecea">Orrery Mission Control</text>
+    <text x="600" y="545" font-size="24" fill="#a3acb0">Local-first mission planning, execution &amp; review</text>
+  </g>
+</svg>

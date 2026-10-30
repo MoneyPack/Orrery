@@ -1,4 +1,5 @@
 import type { Mission, MissionStatus } from "../domain/mission";
+import { useReveal } from "../hooks/use-reveal";
 
 type Tone = "neutral" | "danger" | "success";
 interface Stage { id: string; label: string; short: string }
@@ -33,13 +34,18 @@ export function lifecyclePosition(status: MissionStatus): { index: number; tone:
 
 export function LifecycleRail({ mission }: { mission: Mission }) {
   const { index, tone, terminalLabel } = lifecyclePosition(mission.status);
+  const railReveal = useReveal<HTMLOListElement>();
   return (
-    <ol className="lifecycle" aria-label="Mission lifecycle">
+    <ol className="lifecycle" aria-label="Mission lifecycle" ref={railReveal} data-stagger>
       {STAGES.map((stage, i) => {
         const state = i < index ? "done" : i === index ? "current" : "upcoming";
         const label = i === 5 && terminalLabel ? terminalLabel : stage.label;
+        const liveTone = i === index ? tone : "neutral";
         return (
-          <li key={stage.id} data-state={state} data-tone={i === index ? tone : "neutral"} aria-current={state === "current" ? "step" : undefined}>
+          <li key={stage.id} data-state={state} data-tone={liveTone} aria-current={state === "current" ? "step" : undefined}>
+            {state === "current" && (mission.status === "running" || mission.status === "blocked") ? (
+              <span className="beacon" data-tone={mission.status === "blocked" ? "blocked" : "live"} aria-hidden="true" />
+            ) : null}
             {stage.short}<span> {label}</span>
           </li>
         );

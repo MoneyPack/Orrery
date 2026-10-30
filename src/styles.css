@@ -4,6 +4,8 @@
    not cards. Motion communicates state, never decoration.
    ─────────────────────────────────────────────────────────────────────────── */
 
+@import url("./components/mission-replay-debugger.css");
+
 @font-face {
   font-family: "Inter";
   font-style: normal;
@@ -101,6 +103,49 @@
 @keyframes progress-sweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
+/* ── Scroll-reveal (Relume-timeline-inspired, native) ─────────────────────
+   Elements with [data-reveal] start translated + transparent and ease into
+   place the first time they intersect the viewport. .is-visible is added by
+   useReveal(); the no-JS / reduced-motion fallback keeps content visible. */
+[data-reveal] { opacity: 0; transform: translateY(14px); transition: opacity var(--t-slow) var(--ease-out), transform var(--t-slow) var(--ease-out); }
+[data-reveal].is-visible, .is-visible [data-reveal] { opacity: 1; transform: none; }
+[data-reveal="left"] { transform: translateX(-16px); }
+[data-reveal="left"].is-visible, .is-visible [data-reveal="left"] { transform: none; }
+[data-reveal="scale"] { transform: scale(.97) translateY(8px); }
+[data-reveal="scale"].is-visible, .is-visible [data-reveal="scale"] { transform: none; }
+
+/* ── Stagger children (Relume card-grid rhythm, native) ──────────────────
+   Apply to a list container: children rise in sequence via --reveal-index,
+   auto-assigned by useReveal(). Pure CSS delays, no JS timers. The .is-visible
+   may sit on the container itself or an ancestor (e.g. a revealed panel). */
+[data-stagger] > * { opacity: 0; transform: translateY(10px); transition: opacity var(--t-med) var(--ease-out), transform var(--t-med) var(--ease-out); transition-delay: calc(var(--reveal-index, 0) * 55ms); }
+[data-stagger].is-visible > *, .is-visible [data-stagger].is-visible > *, .is-visible [data-stagger] > * { opacity: 1; transform: none; }
+
+/* ── Industrial progress bar (Relume-loader-inspired, state-driven) ──────
+   Determinate meter whose fill eases toward the value; indeterminate sweep
+   for live runs. Distinct from the boot progress rail (one-shot launch). */
+.meter { position: relative; height: 3px; overflow: hidden; background: var(--line); border-radius: 2px; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transform: scaleX(0); transform-origin: left; transition: transform var(--t-slow) var(--ease-out); }
+.meter[data-state="live"] > i { position: absolute; inset: 0; width: 40%; animation: meter-sweep 1.6s var(--ease-in-out) infinite; }
+@keyframes meter-sweep { 0% { left: -40%; } 100% { left: 100%; } }
+
+/* ── Live status beacon (Relume live-dot, industrial) ─────────────────────
+   Replaces flat status text with a breathing ring: running pulses amber,
+   blocked flashes danger, done settles green. */
+.beacon { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
+.beacon::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid currentColor; opacity: 0; }
+.beacon[data-tone="live"] { background: var(--accent-strong); color: var(--accent-strong); animation: pulse-soft 1.6s ease-in-out infinite; }
+.beacon[data-tone="live"]::after { animation: beacon-ring 1.6s var(--ease-out) infinite; }
+.beacon[data-tone="blocked"] { background: var(--danger); color: var(--danger); animation: pulse-soft 1s ease-in-out infinite; }
+.beacon[data-tone="done"] { background: var(--success); color: var(--success); }
+@keyframes beacon-ring { 0% { transform: scale(.6); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
+
+/* ── Number tick (count-up affordance, no JS animation library) ──────────
+   Applied transiently by useCountUp(): a short rise + tabular figure swap. */
+[data-tick] { display: inline-block; font-variant-numeric: tabular-nums; }
+[data-tick="bump"] { animation: tick-bump 320ms var(--ease-spring); }
+@keyframes tick-bump { 0% { transform: translateY(45%); opacity: 0; } 100% { transform: none; opacity: 1; } }
+
 /* ── Base ──────────────────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
@@ -122,6 +167,44 @@ h3 { font-size: 12px; font-weight: 600; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .eyebrow { color: var(--text-faint); font: 600 9px/1.2 var(--mono); letter-spacing: .13em; text-transform: uppercase; }
 ::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* ── Welcome launcher (pre-boot hero, Relume-rhythm, native) ─────────────
+   Aurora drift + emblem glow + staggered pillars + headline shimmer. Gated
+   below for reduced motion and small viewports. */
+.launch { position: fixed; inset: 0; z-index: 120; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: center; gap: 4vw; padding: 6vw 7vw; overflow: hidden; background: var(--bg-deep); color: var(--text); color-scheme: dark; --accent: #c98a36; --accent-strong: #e3a94e; --accent-glow: color-mix(in srgb, #c98a36 26%, transparent); cursor: default; transition: opacity 420ms var(--ease-in-out), visibility 420ms; }
+.launch[data-exiting="true"] { opacity: 0; visibility: hidden; }
+.launch-aurora { position: absolute; inset: -20%; background: radial-gradient(ellipse 42% 34% at 30% 30%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), radial-gradient(ellipse 36% 30% at 72% 62%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%), radial-gradient(ellipse 60% 46% at 50% 110%, color-mix(in srgb, #7fb08a 7%, transparent), transparent 70%); animation: launch-aurora 16s var(--ease-in-out) infinite alternate; pointer-events: none; }
+@keyframes launch-aurora { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 2%, 0) scale(1.06); } }
+.launch-grid { position: absolute; inset: 0; background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 15%, transparent 75%); opacity: 0; animation: fade-in 1.4s var(--ease-out) .1s forwards; pointer-events: none; }
+.launch-orrery { width: min(38vw, 520px); height: auto; justify-self: center; overflow: visible; opacity: 0; animation: launch-emblem 1.1s var(--ease-out) .15s forwards; filter: drop-shadow(0 0 26px var(--accent-glow)); }
+@keyframes launch-emblem { from { opacity: 0; transform: scale(.92) translateY(14px); } to { opacity: .95; transform: none; } }
+.launch-orrery .ring { fill: none; stroke: var(--line-strong); stroke-width: .5; }
+.launch-orrery .ring.r3 { stroke: color-mix(in srgb, var(--accent) 60%, var(--line-strong)); }
+.launch-orrery .tick { stroke: var(--line-strong); stroke-width: .5; }
+.launch-orrery .orbit { transform-origin: 100px 100px; animation: spin linear infinite; }
+.launch-orrery .orbit.o1 { animation-duration: 40s; } .launch-orrery .orbit.o2 { animation-duration: 70s; animation-name: spin-reverse; }
+.launch-orrery .orbit.o3 { animation-duration: 110s; } .launch-orrery .orbit.o4 { animation-duration: 170s; animation-name: spin-reverse; }
+.launch-orrery .body { fill: var(--text-soft); } .launch-orrery .body.amber { fill: var(--accent-strong); } .launch-orrery .moon { fill: var(--text-faint); }
+.launch-orrery .core { fill: var(--accent); transform-origin: 100px 100px; animation: core-breathe 5s ease-in-out infinite; }
+.launch-orrery .core-halo { fill: none; stroke: var(--accent); stroke-width: .4; opacity: .6; }
+.launch-orrery .sweep { display: none; }
+.launch-copy { position: relative; display: grid; gap: 18px; justify-items: start; max-width: 620px; }
+.launch-copy h1 { margin: 0; max-width: 560px; font-size: clamp(40px, 5.6vw, 84px); font-weight: 600; letter-spacing: -.055em; line-height: 1.02; }
+.launch-copy h1 em { font-style: normal; background: linear-gradient(100deg, var(--accent-strong) 20%, #f4d9a3 40%, var(--accent-strong) 60%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 5s linear infinite; }
+.launch-copy > p { margin: 0; max-width: 480px; color: var(--text-soft); font-size: 15px; line-height: 1.6; }
+.launch-pillars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 8px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.launch-pillars li { display: grid; gap: 6px; align-content: start; padding: 16px 18px 18px 0; margin-right: 18px; border-right: 1px solid var(--line); }
+.launch-pillars li:last-child { border-right: 0; margin-right: 0; padding-right: 0; }
+.launch-pillars svg { color: var(--accent-strong); }
+.launch-pillars b { font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.launch-pillars span { font-size: 12px; line-height: 1.55; color: var(--text-soft); }
+.launch-status { display: flex; align-items: center; gap: 8px; font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+.launch-actions { display: flex; align-items: center; gap: 18px; margin-top: 4px; }
+.launch-enter { min-height: 42px; padding: 10px 20px; font-size: 12px; letter-spacing: .02em; animation: launch-halo 2.8s ease-in-out 1.2s infinite; }
+@keyframes launch-halo { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 5px var(--accent-glow); } }
+.launch-enter:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--accent-glow); }
+.launch-hint { display: flex; align-items: center; gap: 6px; color: var(--text-faint); font: 500 10px var(--mono); letter-spacing: .06em; }
+.launch-hint kbd { padding: 2px 6px; border: 1px solid var(--line-strong); border-radius: 4px; font: inherit; }
 
 /* ── Boot sequence ─────────────────────────────────────────────────────── */
 .boot {
@@ -282,7 +365,9 @@ input:disabled, textarea:disabled { color: var(--text-soft); opacity: 1; backgro
 .workspace-grid { min-height: 0; display: grid; grid-template-columns: minmax(380px, .85fr) minmax(420px, 1.15fr); grid-template-rows: minmax(320px, 1fr) minmax(230px, .72fr); overflow: auto; }
 .plan-canvas, .timeline-panel, .review-studio { min-width: 0; background: var(--surface); }
 .plan-canvas { grid-row: 1 / 3; border-right: 1px solid var(--line-strong); }
-.timeline-panel { border-bottom: 1px solid var(--line-strong); overflow-y: auto; }
+.timeline-panel { position: relative; border-bottom: 1px solid var(--line-strong); overflow-y: auto; }
+.timeline-panel .meter { position: sticky; top: 0; z-index: 2; }
+.panel-header.compact h2 { display: inline-flex; align-items: center; gap: 8px; }
 .review-studio { overflow-y: auto; }
 .panel-header.compact { padding: 12px 15px 10px; } .event-count { color: var(--text-faint); font: 18px var(--mono); font-variant-numeric: tabular-nums; }
 .approval { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font: 9px var(--mono); text-transform: uppercase; } .approval.approved { color: var(--success); }
@@ -301,9 +386,8 @@ input:disabled, textarea:disabled { color: var(--text-soft); opacity: 1; backgro
 .permission-actions { display: flex; justify-content: flex-end; gap: 7px; padding: 10px 12px; }
 .event-list { position: relative; margin: 0; padding: 0; list-style: none; }
 .event-list::before { content: ""; position: absolute; left: 25px; top: 0; bottom: 0; width: 1px; background: var(--line); }
-.event-list li { position: relative; display: grid; grid-template-columns: 34px 1fr auto; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--line); animation: rise-in var(--t-med) var(--ease-out) backwards; }
-.event-list li:nth-child(2) { animation-delay: 40ms; } .event-list li:nth-child(3) { animation-delay: 80ms; }
-.event-list li:nth-child(4) { animation-delay: 120ms; } .event-list li:nth-child(n+5) { animation-delay: 160ms; }
+.event-list li { position: relative; display: grid; grid-template-columns: 34px 1fr auto; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+/* Plain .event-list keeps the original mount choreography; [data-stagger] hands sequencing to useReveal(). */
 .event-sequence { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 18px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--surface); color: var(--text-faint); font: 600 8px var(--mono); }
 .event-list strong { font-size: 11px; } .event-list p { margin-top: 3px; color: var(--text-soft); font-size: 10px; line-height: 1.4; } .event-list time { color: var(--text-faint); font: 8px var(--mono); font-variant-numeric: tabular-nums; }
 .event-list li[data-kind="capability_request"] .event-sequence, .event-list li[data-kind="fallback"] .event-sequence { border-color: var(--warning); color: var(--warning); }
@@ -341,16 +425,25 @@ pre { margin: 0; padding: 10px 12px; overflow: auto; border-bottom: 1px solid va
 @media (max-width: 767px) {
   body { overflow: auto; } .app-shell { height: auto; min-height: 100dvh; } .command-bar { position: sticky; top: 0; z-index: 5; grid-template-columns: 1fr auto; } .brand small { display: none; } .workbench { grid-template-columns: 1fr; } .mission-sidebar-wrap { border-right: 0; border-bottom: 1px solid var(--line-strong); max-height: 300px; } .mission-workspace { overflow: visible; } .mission-header { padding: 15px 15px 0; } .workspace-grid { overflow: visible; } .plan-form label, .workspace-ledger div { grid-template-columns: 1fr; } .plan-actions, .review-actions { flex-wrap: wrap; } .review-grid { grid-template-columns: 1fr; } .review-grid > section + section { border-left: 0; border-top: 1px solid var(--line); } .welcome-state { min-height: 65vh; padding: 45px 24px; } .welcome-orrery { opacity: .25; width: 80vw; right: -25vw; } .welcome-steps { flex-wrap: wrap; gap: 12px; } .welcome-steps li { border: 0; } .mode-grid { grid-template-columns: repeat(2, 1fr); } .mode-option:nth-child(2) span { border-right: 0; } .mode-option:nth-child(-n+2) span { border-bottom: 1px solid var(--line); }
   .boot-telemetry { max-width: 100%; }
+  .launch { grid-template-columns: 1fr; gap: 28px; padding: 40px 24px; align-content: center; overflow-y: auto; }
+  .launch-orrery { width: min(58vw, 300px); order: -1; }
+  .launch-pillars { grid-template-columns: 1fr; }
+  .launch-pillars li { border-right: 0; border-bottom: 1px solid var(--line); margin-right: 0; padding: 12px 0; }
+  .launch-pillars li:last-child { border-bottom: 0; }
+  .launch-actions { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  [data-reveal], [data-stagger] > * { opacity: 1 !important; transform: none !important; }
   .boot-orrery .ring { stroke-dashoffset: 0; }
   .boot-orrery .core, .boot-orrery .orbit, .boot-orrery .tick, .boot-orrery .core-halo, .boot-wordmark *, .boot-line, .boot-skip, .boot-grid { opacity: 1; transform: none; }
+  .launch-aurora { animation: none; }
+  .launch-orrery { opacity: .95; transform: none; animation: none; }
+  .launch-copy h1 em { background: none; color: var(--accent-strong); animation: none; }
+  .launch-enter { animation: none; }
 }
 @media (forced-colors: active) {
   * { forced-color-adjust: auto; }
   .button, .icon-button, input, textarea, select, .mission-dialog, .permission-prompt { border-color: ButtonText; }
   button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline-color: Highlight; }
 }
-
-@import url("./components/mission-replay-debugger.css");
