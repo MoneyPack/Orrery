@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/MoneyPack/Orrery/discussions
+    about: Propose ideas, ask questions, or share mission-control workflows.

@@ -19,19 +19,16 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(options?: { th
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
+    const assignIndexes = (list: Element) => {
+      Array.from((list as HTMLElement).children).forEach((child, i) => {
+        (child as HTMLElement).style.setProperty("--reveal-index", String(i));
+      });
+    };
     const reveal = () => {
       node.classList.add("is-visible");
       for (const el of node.querySelectorAll("[data-reveal],[data-stagger]")) el.classList.add("is-visible");
-      for (const list of node.querySelectorAll("[data-stagger]")) {
-        Array.from((list as HTMLElement).children).forEach((child, i) => {
-          (child as HTMLElement).style.setProperty("--reveal-index", String(i));
-        });
-      }
-      if (node.hasAttribute("data-stagger")) {
-        Array.from(node.children).forEach((child, i) => {
-          (child as HTMLElement).style.setProperty("--reveal-index", String(i));
-        });
-      }
+      for (const list of node.querySelectorAll("[data-stagger]")) assignIndexes(list);
+      if (node.hasAttribute("data-stagger")) assignIndexes(node);
     };
     if (prefersReducedMotion() || typeof IntersectionObserver !== "function") {
       reveal();

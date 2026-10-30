@@ -1,5 +1,6 @@
 import { Plus, Target, Trash } from "@phosphor-icons/react";
 import type { Mission } from "../domain/mission";
+import { useReveal } from "../hooks/use-reveal";
 
 export function MissionList({
   missions,
@@ -14,9 +15,10 @@ export function MissionList({
   onCreate: () => void;
   onReset: () => void;
 }) {
+  const sidebarReveal = useReveal<HTMLElement>();
   return (
-    <aside className="mission-sidebar" aria-label="Mission control">
-      <header className="sidebar-header">
+    <aside className="mission-sidebar" aria-label="Mission control" ref={sidebarReveal}>
+      <header className="sidebar-header" data-reveal>
         <div>
           <span className="eyebrow">Project / Orrery</span>
           <h2>Missions</h2>
@@ -26,14 +28,14 @@ export function MissionList({
         </button>
       </header>
       {missions.length === 0 ? (
-        <div className="empty-state">
+        <div className="empty-state" data-reveal>
           <Target size={26} weight="duotone" />
           <strong>No missions in this project</strong>
           <p>Define a goal, approve its plan, then run it in an isolated workspace.</p>
           <button className="text-button" onClick={onCreate}>Create the first mission</button>
         </div>
       ) : (
-        <nav aria-label="Missions" className="mission-nav">
+        <nav aria-label="Missions" className="mission-nav" data-stagger>
           {missions.map((mission) => (
             <button
               key={mission.id}
@@ -53,7 +55,7 @@ export function MissionList({
         </nav>
       )}
       {missions.length > 0 && (
-        <footer className="sidebar-footer">
+        <footer className="sidebar-footer" data-reveal>
           <button className="text-button danger-text" onClick={onReset}>
             <Trash size={14} /> Reset local demo
           </button>

@@ -102,6 +102,9 @@
 @keyframes node-pop { 0% { transform: scale(0); } 70% { transform: scale(1.3); } 100% { transform: scale(1); } }
 @keyframes progress-sweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes launch-shine { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(240%) skewX(-18deg); } }
+@keyframes approval-flip { 0% { transform: rotateX(72deg); opacity: 0; } 60% { transform: rotateX(-8deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes completion-slide { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 
 /* ── Scroll-reveal (Relume-timeline-inspired, native) ─────────────────────
    Elements with [data-reveal] start translated + transparent and ease into
@@ -200,7 +203,8 @@ h3 { font-size: 12px; font-weight: 600; }
 .launch-pillars span { font-size: 12px; line-height: 1.55; color: var(--text-soft); }
 .launch-status { display: flex; align-items: center; gap: 8px; font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
 .launch-actions { display: flex; align-items: center; gap: 18px; margin-top: 4px; }
-.launch-enter { min-height: 42px; padding: 10px 20px; font-size: 12px; letter-spacing: .02em; animation: launch-halo 2.8s ease-in-out 1.2s infinite; }
+.launch-enter { position: relative; overflow: hidden; min-height: 42px; padding: 10px 20px; font-size: 12px; letter-spacing: .02em; animation: launch-halo 2.8s ease-in-out 1.2s infinite; }
+.launch-enter::after { content: ""; position: absolute; top: 0; bottom: 0; width: 38%; background: linear-gradient(90deg, transparent, #ffffff59, transparent); transform: translateX(-120%) skewX(-18deg); animation: launch-shine 3.4s var(--ease-in-out) 1.4s infinite; pointer-events: none; }
 @keyframes launch-halo { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 5px var(--accent-glow); } }
 .launch-enter:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--accent-glow); }
 .launch-hint { display: flex; align-items: center; gap: 6px; color: var(--text-faint); font: 500 10px var(--mono); letter-spacing: .06em; }
@@ -284,10 +288,8 @@ h3 { font-size: 12px; font-weight: 600; }
 .icon-button.accent { color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .icon-button.accent:hover { transform: rotate(90deg); box-shadow: 0 0 0 3px var(--accent-glow); }
 .mission-nav { overflow-y: auto; }
-.mission-row { position: relative; width: 100%; display: grid; gap: 6px; padding: 12px 14px 11px; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; background: transparent; animation: slide-in-left var(--t-med) var(--ease-out) backwards; transition: background-color var(--t-fast) var(--ease-out), border-left-color var(--t-fast) var(--ease-out), padding-left var(--t-fast) var(--ease-out); }
-.mission-row:nth-child(1) { animation-delay: 0ms; } .mission-row:nth-child(2) { animation-delay: 30ms; } .mission-row:nth-child(3) { animation-delay: 60ms; }
-.mission-row:nth-child(4) { animation-delay: 90ms; } .mission-row:nth-child(5) { animation-delay: 120ms; } .mission-row:nth-child(6) { animation-delay: 150ms; }
-.mission-row:nth-child(n+7) { animation-delay: 180ms; }
+.mission-row { position: relative; width: 100%; display: grid; gap: 6px; padding: 12px 14px 11px; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; background: transparent; transition: background-color var(--t-fast) var(--ease-out), border-left-color var(--t-fast) var(--ease-out), padding-left var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+.mission-nav[data-stagger].is-visible > *, .is-visible .mission-nav[data-stagger] > * { animation: slide-in-left var(--t-med) var(--ease-out) backwards; animation-delay: calc(var(--reveal-index, 0) * 55ms); }
 .mission-row:hover { background: var(--surface-raised); padding-left: 17px; }
 .mission-row[data-active="true"] { border-left-color: var(--accent); background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface-raised)), var(--surface-raised) 60%); }
 .mission-row-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -370,7 +372,10 @@ input:disabled, textarea:disabled { color: var(--text-soft); opacity: 1; backgro
 .panel-header.compact h2 { display: inline-flex; align-items: center; gap: 8px; }
 .review-studio { overflow-y: auto; }
 .panel-header.compact { padding: 12px 15px 10px; } .event-count { color: var(--text-faint); font: 18px var(--mono); font-variant-numeric: tabular-nums; }
-.approval { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font: 9px var(--mono); text-transform: uppercase; } .approval.approved { color: var(--success); }
+.approval { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font: 9px var(--mono); text-transform: uppercase; transform-origin: top center; }
+.plan-canvas[data-approval="approved"] .approval { color: var(--success); }
+.plan-canvas[data-approval="approved"] .approval.approved { animation: approval-flip var(--t-med) var(--ease-spring); }
+.review-studio[data-ready="ready"] .completion-summary { animation: completion-slide var(--t-med) var(--ease-out) backwards; }
 .plan-form { display: grid; gap: 0; }
 .plan-form label { display: grid; grid-template-columns: 145px 1fr; gap: 14px; align-items: start; padding: 16px; border-bottom: 1px solid var(--line); }
 .plan-form label > span { display: grid; gap: 4px; } .plan-form small { color: var(--text-faint); font-size: 10px; line-height: 1.35; }
@@ -441,6 +446,7 @@ pre { margin: 0; padding: 10px 12px; overflow: auto; border-bottom: 1px solid va
   .launch-orrery { opacity: .95; transform: none; animation: none; }
   .launch-copy h1 em { background: none; color: var(--accent-strong); animation: none; }
   .launch-enter { animation: none; }
+  .launch-enter::after { display: none; }
 }
 @media (forced-colors: active) {
   * { forced-color-adjust: auto; }

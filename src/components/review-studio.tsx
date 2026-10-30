@@ -1,5 +1,6 @@
 import { CheckCircle, FileCode, GitDiff, Info, Warning, XCircle } from "@phosphor-icons/react";
 import type { Mission } from "../domain/mission";
+import { useReveal } from "../hooks/use-reveal";
 
 export function ReviewStudio({
   mission,
@@ -9,18 +10,19 @@ export function ReviewStudio({
   onReview: (decision: "accept" | "reject" | "request_revision") => void;
 }) {
   const ready = mission.status === "ready_for_review";
+  const studioReveal = useReveal<HTMLElement>();
   return (
-    <section className="review-studio" aria-labelledby="review-title">
-      <header className="panel-header compact">
+    <section className="review-studio" aria-labelledby="review-title" ref={studioReveal} data-ready={ready ? "ready" : "waiting"}>
+      <header className="panel-header compact" data-reveal>
         <div><span className="eyebrow">Change snapshot</span><h2 id="review-title">Review studio</h2></div>
         <GitDiff size={19} />
       </header>
       {!mission.completionSummary ? (
-        <div className="inline-empty"><Warning size={18} /><p>Review unlocks when execution records a completion summary and evidence.</p></div>
+        <div className="inline-empty" data-reveal><Warning size={18} /><p>Review unlocks when execution records a completion summary and evidence.</p></div>
       ) : (
         <>
-          <div className="completion-summary"><span className="eyebrow">Completion reason</span><p>{mission.completionSummary}</p></div>
-          <div className="review-grid">
+          <div className="completion-summary" data-reveal><span className="eyebrow">Completion reason</span><p>{mission.completionSummary}</p></div>
+          <div className="review-grid" data-reveal="scale">
             <section aria-labelledby="changes-title">
               <h3 id="changes-title">Changed files <span>{mission.changes.length}</span></h3>
               {mission.changes.map((change) => (

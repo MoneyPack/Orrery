@@ -47,7 +47,7 @@ export function RuntimeTimeline({
 
   return (
     <section className="timeline-panel" aria-labelledby="timeline-title" ref={panelReveal}>
-      <header className="panel-header compact">
+      <header className="panel-header compact" data-reveal>
         <div>
           <span className="eyebrow">Durable event log</span>
           <h2 id="timeline-title"><span className="beacon" data-tone={tone} aria-hidden="true" /> Runtime timeline</h2>
@@ -56,7 +56,7 @@ export function RuntimeTimeline({
       </header>
       <RunMeter done={mission.events.length} total={mission.plan.actions.length} live={live} />
       {pending?.capability && (
-        <section className="permission-prompt" aria-label="Permission required">
+        <section className="permission-prompt" aria-label="Permission required" data-reveal="scale">
           <div className="permission-title">
             <ShieldWarning size={20} weight="duotone" />
             <div><span className="eyebrow">Guarded capability</span><h3>Permission required</h3></div>
@@ -73,7 +73,7 @@ export function RuntimeTimeline({
         </section>
       )}
       {mission.events.length === 0 ? (
-        <div className="inline-empty"><Clock size={19} /><p>Activity will appear here after the fixture run starts.</p></div>
+        <div className="inline-empty" data-reveal><Clock size={19} /><p>Activity will appear here after the fixture run starts.</p></div>
       ) : (
         <ol className="event-list" data-stagger>
           {mission.events.map((event) => (

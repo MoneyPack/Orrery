@@ -1,6 +1,7 @@
 import { Minus, Play, Plus, SealCheck, Stop } from "@phosphor-icons/react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { Mission, PlanContent } from "../domain/mission";
+import { useReveal } from "../hooks/use-reveal";
 
 export function PlanCanvas({
   mission,
@@ -19,6 +20,7 @@ export function PlanCanvas({
   const [actions, setActions] = useState(mission.plan.actions.length ? mission.plan.actions : [""]);
   const [criteria, setCriteria] = useState(mission.plan.acceptanceCriteria.length ? mission.plan.acceptanceCriteria : [""]);
   const editable = mission.mode !== "explore" && ["draft", "planning", "revision_requested"].includes(mission.status);
+  const planReveal = useReveal<HTMLElement>();
 
   useEffect(() => {
     setScope(mission.plan.scope);
@@ -32,8 +34,8 @@ export function PlanCanvas({
   };
 
   return (
-    <section className="plan-canvas" aria-labelledby="plan-title">
-      <header className="panel-header">
+    <section className="plan-canvas" aria-labelledby="plan-title" ref={planReveal} data-approval={mission.plan.approved ? "approved" : "pending"}>
+      <header className="panel-header" data-reveal>
         <div>
           <span className="eyebrow">Plan canvas / revision {mission.plan.revision}</span>
           <h2 id="plan-title">Execution contract</h2>

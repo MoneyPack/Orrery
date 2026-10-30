@@ -14,6 +14,7 @@ Commands run + results (paste the green lines):
 - [ ] Focused tests: …
 - [ ] `npm test -- --run`
 - [ ] Smokes as relevant: `mission:smoke` / `daemon:smoke` / `desktop:smoke` / `test:e2e`
+- [ ] Motion/a11y: screenshots or clips for changed surfaces, axe clean, `prefers-reduced-motion` verified
 
 ## Checklist
 - [ ] Conventional commit message(s)

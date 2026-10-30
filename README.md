@@ -10,9 +10,17 @@
 [![Theia](https://img.shields.io/badge/theia-1.75.0-813087?logo=eclipse&logoColor=white)](theia-app/)
 [![React](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)](src/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.9-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![License](https://img.shields.io/badge/license-private-lightgrey)](#)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8a6d2b)](LICENSE)
 
 **Local-first mission planning, execution, and review — daemon-owned authority, replayable events, signed by default.**
+
+![Social preview: delegate the work, keep the judgment](docs/brand/orrery-social.png)
+
+| Pillar | What the operator keeps |
+|---|---|
+| Isolate | Every run executes in its own workspace, away from the working tree. |
+| Approve | Plans and capability requests wait for an explicit decision. |
+| Verify | Evidence and ordered events back every review before acceptance. |
 
 [Getting started](#requirements) · [Architecture](#local-daemon-and-clients) · [Verification](#verification) · [Release policy](docs/upgrade-and-distribution.md) · [ADRs](docs/superpowers/adrs/README.md)
 
@@ -60,6 +68,18 @@ npm run dev
 ```
 
 Vite prints the local URL. Mission and theme state persist in the browser's local storage. Use **Reset local demo** to clear mission records.
+
+### One-minute tour
+
+1. Open the welcome launcher and choose **Enter Mission Control**.
+2. Create a mission, approve its plan, and start the fixture run.
+3. Deny the scoped capability request, inspect the evidence, then accept.
+
+### Screens
+
+| Mission Control shell | Welcome launcher |
+|---|---|
+| ![Mission Control shell](docs/brand/orrery-banner.png) | ![Orrery social preview](docs/brand/orrery-social.png) |
 
 ## Verification
 
