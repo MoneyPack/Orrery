@@ -54,6 +54,27 @@ describe("AllowlistedCommandRunner", () => {
     );
   });
 
+  it("accepts aliased worktree paths that canonicalize inside the root", async () => {
+    const { mkdtemp, realpath, symlink } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = await realpath(await mkdtemp(join(tmpdir(), "orrery-aliased-cwd-")));
+    const link = `${root}-alias`;
+    await symlink(root, link, "junction").catch(() => undefined);
+    const { lstat } = await import("node:fs/promises");
+    if (!(await lstat(link).catch(() => null))) return;
+    const aliased = runner({ worktreePath: link });
+    const result = await aliased.run({ executable: node, args: ["--version"], cwd: root });
+    expect(result.exitCode).toBe(0);
+    const outside = runner({ worktreePath: link });
+    await expect(outside.run({ executable: node, args: ["--version"], cwd: `${root}/..` })).rejects.toThrow(
+      "cwd must be contained by the mission worktree",
+    );
+    const { rm } = await import("node:fs/promises");
+    await rm(link, { force: true });
+    await rm(root, { recursive: true, force: true });
+  });
+
   it("terminates commands at the configured timeout", async () => {
     const timed = runner({ timeoutMs: 20 });
 

@@ -57,7 +57,16 @@ export class AllowlistedCommandRunner {
   async run(input: CommandInput): Promise<CommandResult> {
     assertCommandArgs(input.args);
     if (!isContained(input.cwd, this.options.worktreePath)) {
-      throw new Error("cwd must be contained by the mission worktree");
+      // `resolve` does not expand 8.3 short names or junctions (e.g. a Windows temp root like
+      // `C:\Users\RUNNER~1\...`), while the worktree path may already be canonicalized. Compare
+      // the canonical pair before rejecting so paths that differ only by aliasing still run.
+      const [canonicalCwd, canonicalRoot] = await Promise.all([
+        realpath(input.cwd).catch(() => null),
+        realpath(this.options.worktreePath).catch(() => null),
+      ]);
+      if (!canonicalCwd || !canonicalRoot || !isContained(canonicalCwd, canonicalRoot)) {
+        throw new Error("cwd must be contained by the mission worktree");
+      }
     }
     const allowed = this.options.allowlist.some(
       (entry) => entry.executable === input.executable && entry.args.length === input.args.length && entry.args.every((arg, index) => arg === input.args[index]),
