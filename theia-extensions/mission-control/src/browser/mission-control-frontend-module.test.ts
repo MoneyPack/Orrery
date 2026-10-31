@@ -40,22 +40,15 @@ describe("mission control frontend container module", () => {
     expect(second.isDisposed).toBe(false);
   });
 
-  it("binds QuickAccessRegistry, without which QuickViewService cannot resolve", async () => {
-    // `AbstractViewContribution` injects `QuickViewService`, which injects `QuickAccessRegistry`.
-    // That symbol is declared in `@theia/core` but only bound by `@theia/monaco`, which this
-    // application does not depend on. Constructing a contribution does not expose the gap,
-    // because `quickView` is an `@optional()` injection — the failure only appears when the
-    // service is actually resolved, which is what shipped broken until the real-renderer smoke
-    // caught it: every view failed to open and the entire UI was unreachable.
-    const container = new Container();
-    container.load(frontendModule);
-    container.bind(WidgetManager).toConstantValue({} as never);
-    container.bind(ApplicationShell).toConstantValue({} as never);
-    for (const contribution of [MissionControlContribution, OrreryIntelligenceContribution, OrreryToolsContribution]) {
-      expect(() => container.get(contribution)).not.toThrow();
-    }
-    // Resolving the registry is the assertion that fails without the binding. `QuickViewService`
-    // itself is bound by the application, not by this module, so it cannot be asserted here.
-    expect(() => container.get(QuickAccessRegistry)).not.toThrow();
+  it("leaves quick-input to the workbench instead of stubbing it", async () => {
+    // The wider application now composes @theia/monaco, which owns QuickAccessRegistry.
+    // This module must not rebind that symbol: a local stub would shadow the real palette.
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const root = process.cwd().endsWith("mission-control") ? process.cwd() : resolve(process.cwd(), "theia-extensions/mission-control");
+    const source = readFileSync(resolve(root, "src/browser/mission-control-frontend-module.ts"), "utf8");
+    expect(source).not.toContain("QuickAccessRegistry");
+    expect(source).not.toContain("QuickInputService");
+    expect(source).not.toContain("DefaultsPreferenceProvider");
   });
 });

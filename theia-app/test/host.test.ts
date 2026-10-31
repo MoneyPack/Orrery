@@ -19,14 +19,20 @@ describe("isolated Theia Electron host", () => {
   it("is discovered with the reusable extension in the generated Electron graph", () => {
     const application = new ApplicationPackage({ projectPath: process.cwd() });
     expect(application.target).toBe("electron");
-    expect([...application.electronMainModules.values()]).toEqual([
+    expect([...application.electronMainModules.values()]).toEqual(expect.arrayContaining([
       "@orrery/mission-control-theia/lib/electron-main/mission-control-electron-main-module",
       "@orrery/theia-host/lib/electron-main/mission-control-host-module"
-    ]);
-    expect([...application.preloadModules.values()]).toEqual([
+    ]));
+    expect([...application.frontendModules.values()]).toEqual(expect.arrayContaining([
+      "@theia/navigator/lib/browser/navigator-frontend-module",
+      "@theia/editor/lib/browser/editor-frontend-module",
+      "@theia/terminal/lib/browser/terminal-frontend-module",
+      "@orrery/mission-control-theia/lib/browser/mission-control-frontend-module"
+    ]));
+    expect([...application.preloadModules.values()]).toEqual(expect.arrayContaining([
       "@theia/core/lib/electron-browser/preload",
       "@orrery/mission-control-theia/lib/electron-browser/mission-control-preload"
-    ]);
+    ]));
   });
 
   it("writes the extension preload and both electron-main composition modules", () => {

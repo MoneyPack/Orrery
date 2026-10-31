@@ -1,15 +1,10 @@
 import { ContainerModule } from "@theia/core/shared/inversify";
 import { WidgetFactory } from "@theia/core/lib/browser/widget-manager";
 import { FrontendApplicationContribution } from "@theia/core/lib/browser/frontend-application-contribution";
-import { QuickAccessRegistry } from "@theia/core/lib/browser/quick-input/quick-access";
-import { QuickInputService } from "@theia/core/lib/browser/quick-input/quick-input-service";
-import { DefaultsPreferenceProvider } from "@theia/core/lib/common/preferences/defaults-preference-provider";
 import { MenuModelRegistry } from "@theia/core/lib/common/menu";
 import { CommonMenus } from "@theia/core/lib/browser/common-menus";
 import { KeybindingRegistry } from "@theia/core/lib/browser/keybinding";
 import { MissionControlCommands, OrreryIntelligenceCommands, OrreryToolsCommands } from "../common/mission-control-commands";
-import { PreferenceProvider } from "@theia/core/lib/common/preferences/preference-provider";
-import { PreferenceScope } from "@theia/core/lib/common/preferences/preference-scope";
 import { bindViewContribution } from "@theia/core/lib/browser/shell/view-contribution";
 import { MissionControlService, OrreryIntelligenceService, OrreryToolsService } from "../common/mission-control-types";
 import { MissionControlContribution } from "./mission-control-contribution";
@@ -27,53 +22,9 @@ import { OrreryToolsContribution, OrreryToolsWidgetFactory, OrreryToolsWidgetPro
 export const SmokeViewOpener = Symbol("SmokeViewOpener");
 
 export default new ContainerModule((bind) => {
-  // `@theia/core` declares these services but only heavier Theia packages ever *bind* them, and
-  // this application deliberately depends on `@theia/core` alone. Three failures follow:
-  //
-  // - `AbstractViewContribution` injects `QuickViewService`, which needs `QuickAccessRegistry`
-  //   (bound only by `@theia/monaco`). Without it, opening any view throws and every Orrery view
-  //   is unreachable.
-  // - `QuickCommandFrontendContribution` injects `QuickInputService` (also monaco-only). Without
-  //   it, resolving the `CommandContribution` list throws, and Theia's
-  //   `ContainerBasedContributionProvider` catches that and returns an empty list — so *every*
-  //   command, keybinding and menu entry in the whole application silently disappears.
-  // - Resolving any preference proxy needs an un-named `PreferenceProvider` (bound by
-  //   `@theia/preferences` and friends). Without it, the preference service never becomes ready
-  //   and every preference-gated UI element — the DOM menubar included — never populates.
-  //
-  // The quick-input services only power the quick-open palette, which this application has no UI
-  // for, so no-ops satisfy the graph without pretending to provide the feature. Preferences are
-  // Orrery product surface, owned by the daemon and exposed through its own channels; Theia's
-  // preference machinery here only needs to resolve and answer schema defaults, which
-  // `DefaultsPreferenceProvider` — Theia's own implementation — already does for the Default
-  // scope. The symbols must come from Theia's own modules: inversify matches by identity, so a
-  // locally-created symbol cannot match.
-  bind(QuickAccessRegistry).toConstantValue({
-    registerQuickAccessProvider: () => ({ dispose: () => undefined }),
-    getQuickAccessProviders: () => [],
-    getQuickAccessProvider: () => undefined,
-  } as never);
-
-  bind(QuickInputService).toConstantValue({
-    open: () => undefined,
-    createInputBox: () => ({ dispose: () => undefined }),
-    createQuickPick: () => ({ dispose: () => undefined }),
-    input: async () => undefined,
-    pick: async () => undefined,
-    showQuickPick: async () => undefined,
-    hide: () => undefined,
-  } as never);
-
-  // The Default and Session scopes already have providers from core. The User, Workspace and
-  // Folder scopes normally get theirs from `@theia/preferences`/`@theia/workspace`, absent here.
-  // Theia's own defaults provider serves each remaining scope: it answers schema defaults, which
-  // is exactly what a preference-less application should see. Named bindings only — an un-named
-  // binding would make every lookup of `PreferenceProvider` ambiguous against the scope-named
-  // ones and fail resolution outright.
-  for (const scope of [PreferenceScope.User, PreferenceScope.Workspace, PreferenceScope.Folder]) {
-    bind(PreferenceProvider).to(DefaultsPreferenceProvider).inSingletonScope().whenTargetNamed(scope);
-  }
-
+  // The wider workbench composition now provides the real quick-input, quick-access,
+  // and preference bindings via @theia/monaco plus @theia/preferences, so this module
+  // binds only Orrery views and must not shadow those providers with stubs.
   bind(MissionControlDesktopAdapter).toSelf().inSingletonScope();
   bind(MissionControlService).toService(MissionControlDesktopAdapter);
   bind(MissionControlWidget).toSelf().inTransientScope();
