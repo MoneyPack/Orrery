@@ -11,6 +11,7 @@ import { MissionControlContribution } from "./mission-control-contribution";
 import { MissionControlDesktopAdapter } from "./mission-control-desktop-adapter";
 import { MissionControlWidget } from "./mission-control-widget";
 import { MissionControlWidgetFactory, MissionControlWidgetProvider } from "./mission-control-widget-factory";
+import { OrreryWorkbenchContribution } from "./orrery-workbench-contribution";
 import { OrreryIntelligenceDesktopAdapter } from "./orrery-intelligence-adapter";
 import { OrreryIntelligenceWidget } from "./orrery-intelligence-widget";
 import { OrreryIntelligenceContribution, OrreryIntelligenceWidgetFactory, OrreryIntelligenceWidgetProvider } from "./orrery-intelligence-contribution";
@@ -48,6 +49,13 @@ export default new ContainerModule((bind) => {
   bind(OrreryToolsWidgetFactory).toSelf().inSingletonScope();
   bind(WidgetFactory).toService(OrreryToolsWidgetFactory);
   bindViewContribution(bind, OrreryToolsContribution);
+
+  // First-run workbench layout: opens the three Orrery side views so a fresh
+  // desktop shows Activity Bar plus Side Bar plus Editor plus Panel plus
+  // Status Bar with Mission Control populated. Explorer plus Terminal already
+  // self-place via their own initializeLayout contributions.
+  bind(OrreryWorkbenchContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(OrreryWorkbenchContribution);
 
   // Exposes a smoke-only opener on the window.
   //

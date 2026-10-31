@@ -40,6 +40,17 @@ describe("mission control frontend container module", () => {
     expect(second.isDisposed).toBe(false);
   });
 
+  it("binds the first-run workbench layout alongside the widget factories", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const root = process.cwd().endsWith("mission-control") ? process.cwd() : resolve(process.cwd(), "theia-extensions/mission-control");
+    const source = readFileSync(resolve(root, "src/browser/mission-control-frontend-module.ts"), "utf8");
+    // Bound via toService so Theia calls initializeLayout on first run and
+    // opens Mission Control plus Intelligence plus Tools beside Explorer.
+    expect(source).toContain("OrreryWorkbenchContribution");
+    expect(source).toContain("FrontendApplicationContribution).toService(OrreryWorkbenchContribution");
+  });
+
   it("leaves quick-input to the workbench instead of stubbing it", async () => {
     // The wider application now composes @theia/monaco, which owns QuickAccessRegistry.
     // This module must not rebind that symbol: a local stub would shadow the real palette.
