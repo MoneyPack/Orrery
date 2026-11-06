@@ -6,6 +6,14 @@ import { spawnSync } from "node:child_process";
 await rm(resolve("host/lib"), { recursive: true, force: true });
 await mkdir(resolve("host/lib/resources"), { recursive: true });
 
+// tsc emits every host module (browser theme module plus declarations). The electron-main
+// module is then overwritten below by its esbuild bundle, which inlines the root daemon client.
+const compiled = spawnSync(process.execPath, [resolve("node_modules/typescript/bin/tsc"), "-p", "host/tsconfig.json"], {
+  cwd: process.cwd(),
+  stdio: "inherit"
+});
+if (compiled.status !== 0) process.exit(compiled.status ?? 1);
+
 await build({
   entryPoints: [resolve("host/src/electron-main/mission-control-host-module.ts")],
   outfile: resolve("host/lib/electron-main/mission-control-host-module.js"),
@@ -36,9 +44,3 @@ await build({
   minify: true,
   sourcemap: false
 });
-
-const declarations = spawnSync(process.execPath, [resolve("node_modules/typescript/bin/tsc"), "-p", "host/tsconfig.json", "--emitDeclarationOnly"], {
-  cwd: process.cwd(),
-  stdio: "inherit"
-});
-if (declarations.status !== 0) process.exit(declarations.status ?? 1);

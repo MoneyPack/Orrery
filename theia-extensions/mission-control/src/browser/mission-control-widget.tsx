@@ -4,6 +4,7 @@ import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
 import type { ReviewDecision, MissionCreateInput } from "../common/mission-control-contracts";
 import { MissionControlService, type MissionControlState } from "../common/mission-control-types";
 import { MissionControlView } from "./mission-control-view";
+import { ensureMissionControlStyle } from "./mission-control-style";
 
 export const MISSION_CONTROL_WIDGET_ID = "orrery-mission-control";
 
@@ -24,6 +25,7 @@ export class MissionControlWidget extends ReactWidget {
     this.title.caption = "Orrery Mission Control";
     this.title.closable = true;
     this.addClass("orrery-mission-control-widget");
+    ensureMissionControlStyle();
     void this.refresh();
   }
 

@@ -40,7 +40,7 @@ describe("mission control Theia extension structure", () => {
   });
 
   it("keeps browser code outside privileged daemon, kernel, filesystem, process, and Git packages", () => {
-    const files = ["mission-control-desktop-adapter.ts", "mission-control-view.tsx", "mission-control-widget.tsx", "mission-control-widget-factory.ts", "mission-control-contribution.ts", "mission-control-frontend-module.ts",
+    const files = ["mission-control-desktop-adapter.ts", "mission-control-view.tsx", "mission-control-widget.tsx", "mission-control-widget-factory.ts", "mission-control-contribution.ts", "mission-control-frontend-module.ts", "mission-control-style.ts", "orrery-workbench-contribution.ts",
       "orrery-intelligence-adapter.ts", "orrery-intelligence-view.tsx", "orrery-intelligence-widget.tsx", "orrery-intelligence-contribution.ts", "orrery-intelligence-style.ts",
       "orrery-tools-adapter.ts", "orrery-tools-view.tsx", "orrery-tools-widget.tsx", "orrery-tools-contribution.ts", "orrery-tools-style.ts"];
     const forbidden = /^(?:@theia\/electron|electron|react|react-dom|node:.*|fs|process|child_process|isomorphic-git|simple-git)$/;

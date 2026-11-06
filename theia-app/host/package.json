@@ -7,13 +7,15 @@
   "files": ["lib"],
   "theiaExtensions": [
     {
+      "frontend": "lib/browser/orrery-theme-frontend-module",
       "electronMain": "lib/electron-main/mission-control-host-module"
     }
   ],
   "dependencies": {
     "@orrery/mission-control-theia": "0.0.0",
     "@theia/core": "1.75.0",
-    "@theia/electron": "1.75.0"
+    "@theia/electron": "1.75.0",
+    "@theia/monaco": "1.75.0"
   },
   "peerDependencies": {
     "electron": "42.8.1"
