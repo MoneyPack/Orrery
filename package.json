@@ -38,6 +38,9 @@
     "theia-app:typecheck": "npm --prefix theia-app run typecheck",
     "theia-app:test": "npm --prefix theia-app test",
     "theia-app:smoke": "npm --prefix theia-app run smoke",
+    "theia-app:package": "npm --prefix theia-app run package -- --dir",
+    "theia-app:make": "npm --prefix theia-app run package",
+    "theia-app:smoke:packaged": "npm --prefix theia-app run smoke:packaged",
     "test": "vitest",
     "test:e2e": "playwright test"
   },

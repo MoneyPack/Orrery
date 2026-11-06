@@ -1,6 +1,30 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
-import { waitForTheiaExit, waitForTheiaReadiness } from "../scripts/smoke-runtime.mjs";
+import { countBundledPlugins, countDeployedPlugins, waitForTheiaExit, waitForTheiaReadiness } from "../scripts/smoke-runtime.mjs";
+
+describe("Theia smoke bundled plugin accounting", () => {
+  it("reads the largest accepted batch the deployer logged", () => {
+    const output = [
+      "core:Stopwatch INFO Resolve plugins list: 50.9 ms",
+      "core:Stopwatch INFO Deploy batch of 0 accepted plugins: 0.3 ms",
+      "core:Stopwatch INFO Deploy batch of 90 accepted plugins: 410.2 ms",
+      "ORRERY_THEIA_RENDERED"
+    ].join("\n");
+    expect(countDeployedPlugins(output)).toBe(90);
+    expect(countDeployedPlugins("Deploy batch of 0 accepted plugins: 0.3 ms")).toBe(0);
+    expect(countDeployedPlugins("no deployment at all")).toBeNull();
+  });
+
+  it("counts only plugin directories and treats a missing folder as none", () => {
+    const list = () => [
+      { name: "vscode.git", isDirectory: () => true },
+      { name: "vscode.typescript-language-features", isDirectory: () => true },
+      { name: "stray.vsix", isDirectory: () => false }
+    ];
+    expect(countBundledPlugins("plugins", list as never)).toBe(2);
+    expect(countBundledPlugins("plugins", (() => { throw new Error("ENOENT"); }) as never)).toBe(0);
+  });
+});
 
 describe("Theia smoke runtime readiness", () => {
   it("fails when no window readiness signal arrives", async () => {

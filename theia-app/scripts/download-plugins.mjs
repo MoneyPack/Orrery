@@ -24,10 +24,17 @@ const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"
 const pluginsDir = resolve(root, manifest.theiaPluginsDir ?? "plugins");
 const plugins = manifest.theiaPlugins ?? {};
 const excluded = new Set(manifest.theiaPluginsExcludeIds ?? []);
+// Markers live outside the plugins directory: Theia's local-dir resolver treats every entry
+// there as a plugin, and the directory is shipped verbatim as extraResources.
+const markersDir = resolve(root, ".tmp", "plugin-sources");
 await mkdir(pluginsDir, { recursive: true });
+await mkdir(markersDir, { recursive: true });
+for (const stale of await readdir(pluginsDir)) {
+  if (stale.endsWith(".source")) await rm(join(pluginsDir, stale), { force: true });
+}
 
 for (const [id, url] of Object.entries(plugins)) {
-  const marker = join(pluginsDir, `.${id}.source`);
+  const marker = join(markersDir, `${id}.source`);
   if (await readFile(marker, "utf8").then(current => current.trim() === url, () => false)) {
     console.log(`plugins: ${id} already present from ${url}`);
     continue;
@@ -36,7 +43,14 @@ for (const [id, url] of Object.entries(plugins)) {
   const response = await fetch(url, { redirect: "follow" });
   if (!response.ok || !response.body) throw new Error(`plugins: ${id} download failed with HTTP ${response.status}`);
   if (url.endsWith(".vsix")) {
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(join(pluginsDir, `${id}.vsix`)));
+    const scratch = await mkdtemp(join(tmpdir(), "orrery-plugins-"));
+    try {
+      const archive = join(scratch, `${id}.vsix`);
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(archive));
+      await unpackVsix(archive, join(pluginsDir, id));
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
   } else if (url.endsWith(".tar.gz") || url.endsWith(".tgz")) {
     const scratch = await mkdtemp(join(tmpdir(), "orrery-plugins-"));
     try {
@@ -54,7 +68,7 @@ for (const [id, url] of Object.entries(plugins)) {
           console.log(`plugins: excluding ${pluginId}`);
           continue;
         }
-        await moveInto(join(extracted, entry.name), join(pluginsDir, entry.name));
+        await unpackVsix(join(extracted, entry.name), join(pluginsDir, pluginId));
       }
       for (const folder of await flattenedExtensionFolders(extracted)) {
         const pluginId = await extensionId(folder);
@@ -74,6 +88,26 @@ for (const [id, url] of Object.entries(plugins)) {
   await writeFile(marker, `${url}\n`);
 }
 console.log(`plugins: ready in ${pluginsDir}`);
+
+/**
+ * Unpacks a .vsix into a plugin directory.
+ *
+ * Bundled (system) plugins are never unpacked by Theia at runtime: `PluginDeployerImpl` only
+ * routes *user* installs through the vsix file handler and warns "please unpack the plugin
+ * manually" for anything else, deploying zero plugins. The expected shape is the archive as-is
+ * (`extension.vsixmanifest` beside an `extension/` folder), which
+ * `PluginVsCodeDirectoryHandler.resolveFromVSIX` accepts.
+ */
+async function unpackVsix(archive, target) {
+  const decompress = require("decompress");
+  await rm(target, { recursive: true, force: true });
+  await mkdir(target, { recursive: true });
+  await decompress(archive, target);
+  const manifest = join(target, "extension.vsixmanifest");
+  if (!(await stat(manifest).then(() => true, () => false))) {
+    throw new Error(`plugins: ${basename(archive)} did not contain extension.vsixmanifest after unpacking`);
+  }
+}
 
 async function moveInto(source, target) {
   await rm(target, { recursive: true, force: true });

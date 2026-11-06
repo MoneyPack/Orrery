@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 // The real MonacoThemingService pulls monaco-editor-core and its CSS into the module graph,
 // which Node cannot load. The contribution only needs the DI token, so that is all we supply.
 vi.mock("@theia/monaco/lib/browser/monaco-theming-service", () => ({ MonacoThemingService: Symbol("MonacoThemingService") }));
+vi.mock("@theia/ai-core/lib/browser/ai-activation-service", () => ({ AIActivationService: Symbol("AIActivationService"), ENABLE_AI_CONTEXT_KEY: "ai-features.AiEnable.enableAI" }));
 
 import {
   ORRERY_DARK_PALETTE,
@@ -17,6 +18,27 @@ import {
   buildOrreryTheme
 } from "../host/src/browser/orrery-theme";
 import { ORRERY_CHROME_STYLE, ORRERY_CHROME_STYLE_ID, OrreryThemeContribution, ensureOrreryChromeStyle } from "../host/src/browser/orrery-theme-frontend-module";
+import { OrreryAIActivationService } from "../host/src/browser/orrery-ai-activation";
+
+describe("Theia AI activation", () => {
+  it("holds Theia AI inactive and publishes that through the context key", () => {
+    const created: Array<[string, unknown]> = [];
+    const service = new OrreryAIActivationService({ createKey: (key: string, value: unknown) => { created.push([key, value]); return { set: () => undefined }; } } as never);
+    service.initialize();
+    expect(service.isActive).toBe(false);
+    expect(service.canRun).toBe(false);
+    expect(created).toEqual([["ai-features.AiEnable.enableAI", false]]);
+  });
+
+  it("loads after @theia/ai-core so the rebind replaces the default activation service", () => {
+    const generated = readFileSync(resolve("src-gen/frontend/index.js"), "utf8");
+    const aiCore = generated.indexOf("@theia/ai-core/lib/browser/ai-core-frontend-module");
+    const host = generated.indexOf("@orrery/theia-host/lib/browser/orrery-theme-frontend-module");
+    expect(aiCore).toBeGreaterThan(-1);
+    expect(host).toBeGreaterThan(aiCore);
+    expect(JSON.parse(readFileSync(resolve("host/package.json"), "utf8")).dependencies["@theia/ai-core"]).toBe("1.75.0");
+  });
+});
 
 const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/;
 

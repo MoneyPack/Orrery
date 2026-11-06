@@ -24,6 +24,14 @@ The host package declares only its `electronMain` composition module. That modul
 
 The extension preload remains the only Orrery renderer bridge. It exposes `list`, `getSnapshot`, and `reviewAndPromote`, not filesystem, process, shell, daemon, or generic desktop APIs.
 
+Theia AI (`@theia/ai-core`, `@theia/ai-mcp`) is pulled in by `@theia/plugin-ext` and would be active by default; the host rebinds `AIActivationService` to an inactive implementation so Orrery Intelligence and Orrery Tools remain the only AI and MCP surfaces.
+
+## Packaging
+
+`npm run theia-app:package` (root) runs Theia's production bundle and then electron-builder with `theia-app/electron-builder.config.cjs`, which extends the root config's signing policy — signed by default, `ORRERY_UNSIGNED_LOCAL=1` for a local unsigned build. The layout follows Theia IDE: `lib/` bundles inside an asar with native addons, shell-integration scripts, and the daemon unpacked; `node_modules` excluded; plugins shipped as `resources/app/plugins`. `scripts/electron-main.cjs` is the Electron entry in both layouts and points the plugin deployer at the right directory. `theia-app:make` builds the installer targets; `theia-app:smoke:packaged` launches the built executable and requires every bundled plugin to deploy plus every Mission Control view to render. The development smoke runs the same bundled entry with the same plugin requirement.
+
+Bundled plugins must be unpacked directories: Theia only unzips `.vsix` for user installs and deploys zero system plugins otherwise, which the smoke now reports as a failure instead of passing silently.
+
 ## Commands
 
 Run these from the repository root:

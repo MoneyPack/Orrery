@@ -14,6 +14,7 @@
   "dependencies": {
     "@orrery/mission-control-theia": "0.0.0",
     "@theia/core": "1.75.0",
+    "@theia/ai-core": "1.75.0",
     "@theia/electron": "1.75.0",
     "@theia/monaco": "1.75.0"
   },

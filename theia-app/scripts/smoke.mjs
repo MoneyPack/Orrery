@@ -1,14 +1,11 @@
-import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { mkdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
 import { classifyNativePreparationFailure } from "./smoke-policy.mjs";
 import { describeStaleInstall, findStaleInstalledFiles, resolveExtensionPaths } from "./smoke-freshness.mjs";
-import { waitForTheiaExit, waitForTheiaReadiness } from "./smoke-runtime.mjs";
+import { countBundledPlugins, runTheiaSmokeLaunch } from "./smoke-runtime.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const npmCli = process.env.npm_execpath;
@@ -26,35 +23,13 @@ if (stale.length > 0) {
 
 const full = spawnSync(process.execPath, npmArgs(["run", "build:full"]), { cwd: root, encoding: "utf8" });
 if (full.status === 0) {
-  const smokeRoot = resolve(tmpdir(), "orrery-theia-smoke-");
-  mkdirSync(smokeRoot, { recursive: true });
-  const userData = mkdtempSync(smokeRoot);
-  const localAppData = resolve(process.env.LOCALAPPDATA ?? tmpdir(), `OrrerySmoke-${randomUUID()}`);
-  mkdirSync(localAppData, { recursive: true });
   const electronExecutable = resolve(root, "node_modules", "electron", "dist", process.platform === "win32" ? "electron.exe" : "Electron");
-  const launch = spawn(electronExecutable, [root, `--electronUserData=${userData}`], {
-    cwd: root,
-    detached: process.platform !== "win32",
-    env: { ...process.env, LOCALAPPDATA: localAppData, ORRERY_THEIA_SMOKE: "1", ORRERY_THEIA_SMOKE_USER_DATA: userData, ORRERY_TEST_TIMEOUT_SCALE: process.env.ORRERY_TEST_TIMEOUT_SCALE ?? "4" },
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-  try {
-    // Readiness now means "every view rendered", which requires the whole Theia frontend to
-    // start and three widgets to mount, not just the preload script. That is a genuinely longer
-    // wait than the old preload-time signal, so the budget reflects real frontend startup.
-    await waitForTheiaReadiness(launch, 120_000);
-    await waitForTheiaExit(launch, 30_000);
-    terminateProcessTree(launch.pid);
-    removeSmokeUserData(userData);
-    removeSmokeUserData(localAppData);
-    console.log("Theia smoke passed: full build completed and every Mission Control view rendered in the real renderer.");
-    process.exit(0);
-  } catch (error) {
-    terminateProcessTree(launch.pid);
-    removeSmokeUserData(userData);
-    removeSmokeUserData(localAppData);
-    throw error;
-  }
+  // Readiness means "every view rendered", which requires the whole Theia frontend to start and
+  // three widgets to mount, not just the preload script, so the budget reflects real startup.
+  // The entry is package.json#main, the same bundled backend the packaged product runs.
+  await runTheiaSmokeLaunch({ executable: electronExecutable, args: [root], cwd: root, minimumPlugins: countBundledPlugins(resolve(root, "plugins")) });
+  console.log("Theia smoke passed: full build completed, the bundled plugins deployed, and every Mission Control view rendered in the real renderer.");
+  process.exit(0);
 } else {
   const output = `${full.stderr}\n${full.stdout}`;
   const nativeReason = classifyNativePreparationFailure(output);
@@ -64,36 +39,6 @@ if (full.status === 0) {
   }
   console.warn(`Theia smoke fallback: real build/launch is unavailable under Node ${process.versions.node} on ${process.platform} (${nativeReason}).`);
   console.warn("Falling back to generated application metadata and DI validation.");
-}
-
-function removeSmokeUserData(path) {
-  // Chromium can release profile WAL handles just after Electron emits exit.
-  try {
-    rmSync(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
-  } catch (error) {
-    if (process.platform !== "win32" || error?.code !== "EPERM") throw error;
-    // Windows may release Chromium profile handles asynchronously after taskkill.
-    spawnSync("cmd.exe", ["/c", "rmdir", "/s", "/q", path], { stdio: "ignore" });
-  }
-}
-
-function terminateProcessTree(pid) {
-  if (!pid) return;
-  if (process.platform === "win32") {
-    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
-  } else {
-    try {
-      process.kill(-pid, "SIGTERM");
-    } catch {
-      return;
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      // The process group exited after SIGTERM.
-    }
-  }
 }
 
 const fallback = spawnSync(process.execPath, npmArgs(["run", "build"]), { cwd: root, stdio: "inherit" });

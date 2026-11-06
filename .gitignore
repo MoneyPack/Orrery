@@ -10,6 +10,7 @@ theia-app/out/
 theia-app/gen-esbuild.*
 theia-app/vendor/*.tgz
 theia-app/plugins/
+theia-app/release/
 .vite/
 out/
 release/

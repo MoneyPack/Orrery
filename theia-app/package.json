@@ -1,12 +1,13 @@
 {
   "name": "@orrery/theia-app",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
+  "author": "Orrery",
   "engines": {
     "node": "24.19.0"
   },
   "description": "Isolated Eclipse Theia Electron host for Orrery Mission Control.",
-  "main": "src-gen/backend/electron-main.js",
+  "main": "scripts/electron-main.cjs",
   "scripts": {
     "clean": "node scripts/application-manager.mjs clean",
     "build": "npm run build:host && npm run generate",
@@ -17,6 +18,8 @@
     "typecheck": "tsc -p host/tsconfig.json --noEmit && tsc -p tsconfig.test.json --pretty false",
     "test": "npm run generate && vitest run",
     "smoke": "node scripts/smoke.mjs",
+    "package": "node scripts/package.mjs",
+    "smoke:packaged": "node scripts/packaged-smoke.mjs",
     "start": "node scripts/application-manager.mjs start"
   },
   "dependencies": {

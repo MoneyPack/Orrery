@@ -1,7 +1,9 @@
 import { ContainerModule, inject, injectable } from "@theia/core/shared/inversify";
 import { FrontendApplicationContribution } from "@theia/core/lib/browser/frontend-application-contribution";
 import { MonacoThemingService } from "@theia/monaco/lib/browser/monaco-theming-service";
+import { AIActivationService } from "@theia/ai-core/lib/browser/ai-activation-service";
 import { ORRERY_DARK_THEME, ORRERY_DARK_THEME_ID, ORRERY_LIGHT_THEME, ORRERY_LIGHT_THEME_ID } from "./orrery-theme";
+import { OrreryAIActivationService } from "./orrery-ai-activation";
 
 export const ORRERY_CHROME_STYLE_ID = "orrery-chrome-style";
 
@@ -99,7 +101,12 @@ export class OrreryThemeContribution implements FrontendApplicationContribution 
   }
 }
 
-export default new ContainerModule(bind => {
+export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
   bind(OrreryThemeContribution).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(OrreryThemeContribution);
+
+  // The host package depends on @theia/ai-core, so Theia's generator loads that module first
+  // and the rebind replaces its default (active) activation service rather than racing it.
+  bind(OrreryAIActivationService).toSelf().inSingletonScope();
+  rebind(AIActivationService).toService(OrreryAIActivationService);
 });

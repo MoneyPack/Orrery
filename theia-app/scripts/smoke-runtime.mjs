@@ -1,4 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 
 /**
  * Emitted only after every Mission Control view rendered in the real renderer.
@@ -63,6 +67,98 @@ export function waitForTheiaExit(child, timeoutMs, dependencies = {}) {
     child.once("close", finish);
     if (child.exitCode !== null) finish(child.exitCode, child.signalCode);
   });
+}
+
+export function removeSmokeUserData(path) {
+  // Chromium can release profile WAL handles just after Electron emits exit.
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  } catch (error) {
+    if (process.platform !== "win32" || error?.code !== "EPERM") throw error;
+    // Windows may release Chromium profile handles asynchronously after taskkill.
+    spawnSync("cmd.exe", ["/c", "rmdir", "/s", "/q", path], { stdio: "ignore" });
+  }
+}
+
+export function terminateProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+  } else {
+    try {
+      process.kill(-pid, "SIGTERM");
+    } catch {
+      return;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // The process group exited after SIGTERM.
+    }
+  }
+}
+
+/**
+ * Reads how many bundled plugins the backend accepted from the launch output.
+ *
+ * Theia's plugin deployer logs one `Deploy batch of N accepted plugins` line per batch (the
+ * system batch first). The largest count is the number of plugins that will actually run; a
+ * directory of .vsix files that Theia refuses to unpack logs `0` here while every other signal
+ * stays green, which is exactly the failure this guards against.
+ */
+/** Bundled plugins on disk: every directory under the plugins folder, or 0 when it is absent. */
+export function countBundledPlugins(pluginsDir, list = directory => readdirSync(directory, { withFileTypes: true })) {
+  try {
+    return list(pluginsDir).filter(entry => entry.isDirectory()).length;
+  } catch {
+    return 0;
+  }
+}
+
+export function countDeployedPlugins(output) {
+  let deployed = null;
+  for (const match of output.matchAll(/Deploy batch of (\d+) accepted plugins/g)) {
+    const count = Number(match[1]);
+    deployed = deployed === null ? count : Math.max(deployed, count);
+  }
+  return deployed;
+}
+
+/**
+ * Launches an Electron executable in Theia smoke mode against a throwaway profile, waits for
+ * every Mission Control view to render, then for a clean exit. Shared by the development smoke
+ * (electron.exe plus the checkout) and the packaged smoke (the built product executable).
+ *
+ * `minimumPlugins` turns the bundled builtins into a requirement: readiness alone proves the
+ * Orrery views, not that Git or the language features exist.
+ */
+export async function runTheiaSmokeLaunch({ executable, args, cwd, readinessTimeoutMs = 120_000, exitTimeoutMs = 30_000, minimumPlugins = 0 }) {
+  const smokeRoot = resolve(tmpdir(), "orrery-theia-smoke-");
+  mkdirSync(smokeRoot, { recursive: true });
+  const userData = mkdtempSync(smokeRoot);
+  const localAppData = resolve(process.env.LOCALAPPDATA ?? tmpdir(), `OrrerySmoke-${randomUUID()}`);
+  mkdirSync(localAppData, { recursive: true });
+  const launch = spawn(executable, [...args, `--electronUserData=${userData}`], {
+    cwd,
+    detached: process.platform !== "win32",
+    env: { ...process.env, LOCALAPPDATA: localAppData, ORRERY_THEIA_SMOKE: "1", ORRERY_THEIA_SMOKE_USER_DATA: userData, ORRERY_TEST_TIMEOUT_SCALE: process.env.ORRERY_TEST_TIMEOUT_SCALE ?? "4" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  try {
+    const output = await waitForTheiaReadiness(launch, readinessTimeoutMs);
+    await waitForTheiaExit(launch, exitTimeoutMs);
+    if (minimumPlugins > 0) {
+      const deployed = countDeployedPlugins(output);
+      if (deployed === null) throw new Error(`Theia never reported a plugin deployment batch; expected at least ${minimumPlugins} bundled plugins.`);
+      if (deployed < minimumPlugins) throw new Error(`Theia deployed ${deployed} bundled plugins, expected at least ${minimumPlugins}. Bundled plugins must be unpacked directories (see scripts/download-plugins.mjs).`);
+      console.log(`Theia deployed ${deployed} bundled plugins.`);
+    }
+  } finally {
+    terminateProcessTree(launch.pid);
+    removeSmokeUserData(userData);
+    removeSmokeUserData(localAppData);
+  }
 }
 
 function isProcessAlive(pid) {

@@ -13,10 +13,22 @@ import hostModule, {
   MissionControlHostContribution,
   MissionControlWindowTracker,
   bundledPluginsEntry,
-  canonicalTheiaRendererUrl
+  canonicalTheiaRendererUrl,
+  resolveDaemonEntryPath
 } from "../host/src/electron-main/mission-control-host-module";
 
 describe("isolated Theia Electron host", () => {
+  it("finds the daemon from both the development and the bundled module location", () => {
+    const dev = resolve("C:/app/host/lib/electron-main");
+    const bundled = resolve("C:/app/lib/backend");
+    const daemon = resolve("C:/app/host/lib/resources/mission-control-daemon.cjs");
+    const exists = (path: string) => path === daemon;
+    expect(resolveDaemonEntryPath(dev, exists)).toBe(daemon);
+    expect(resolveDaemonEntryPath(bundled, exists)).toBe(daemon);
+    // The real build places it exactly there, so the bundled candidate is not hypothetical.
+    expect(resolveDaemonEntryPath(resolve("lib/backend"))).toBe(resolve("host/lib/resources/mission-control-daemon.cjs"));
+    expect(resolveDaemonEntryPath(bundled, () => false)).toBe(resolve(bundled, "../resources/mission-control-daemon.cjs"));
+  });
   it("points the plugin deployer at the bundled plugins directory unless one was given", () => {
     expect(bundledPluginsEntry("C:/Orrery Host")).toBe(`local-dir:${resolve("C:/Orrery Host", "plugins")}`);
     expect(bundledPluginsEntry("C:/Orrery Host", "local-dir:/elsewhere")).toBe("local-dir:/elsewhere");

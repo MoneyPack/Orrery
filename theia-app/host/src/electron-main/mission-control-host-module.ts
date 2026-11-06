@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import {
   ElectronMainApplicationContribution,
   ElectronMainApplicationGlobals,
@@ -22,6 +23,23 @@ interface HostService extends PublicHostService {
   } | null;
 }
 
+/**
+ * Locates the bundled daemon entry from wherever this module ended up executing.
+ *
+ * In the development layout this module runs from `host/lib/electron-main`, next to
+ * `host/lib/resources`. Theia's production build inlines it into `lib/backend/electron-main.js`,
+ * from where the same relative path points at nothing; the daemon then lives at
+ * `host/lib/resources` two levels up. The first candidate that exists wins, and the dev path
+ * is reported on failure so a misplaced resource is a visible error rather than a hang.
+ */
+export function resolveDaemonEntryPath(moduleDirectory: string, exists: (path: string) => boolean = existsSync): string {
+  const candidates = [
+    resolve(moduleDirectory, "../resources/mission-control-daemon.cjs"),
+    resolve(moduleDirectory, "../../host/lib/resources/mission-control-daemon.cjs")
+  ];
+  return candidates.find(exists) ?? candidates[0];
+}
+
 @injectable()
 export class MissionControlDaemonClient {
   private readonly daemon: OwnedDaemonClient;
@@ -29,7 +47,7 @@ export class MissionControlDaemonClient {
   constructor(parentWindow: () => BrowserWindow | null = () => null) {
     this.daemon = new OwnedDaemonClient({
       parentWindow,
-      daemonEntryPath: resolve(__dirname, "../resources/mission-control-daemon.cjs")
+      daemonEntryPath: resolveDaemonEntryPath(__dirname)
     });
   }
 
