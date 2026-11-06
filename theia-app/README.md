@@ -29,6 +29,8 @@ npm run theia-app:smoke
 
 `theia-app:install` builds the extension, installs both isolated graphs with `npm ci --ignore-scripts`, and then explicitly rebuilds only Theia's required native modules (`@theia/ffmpeg`, `native-keymap`, and `drivelist`). This keeps lifecycle execution allowlisted and dependency resolution reproducible. On Windows, use Node `24.19.0` or another runtime compatible with the installed MSVC toolchain; Node `26.3.0` currently injects incompatible LLVM LTO flags into these native builds. `theia-app:build` still uses installed `@theia/application-package` and `@theia/application-manager` generator APIs to emit the real `src-gen/backend/electron-main.js` and `src-gen/frontend/preload.js` composition metadata.
 
+On a machine whose default Node is 26, install Node `24.19.0` user-scoped with `fnm` (`winget install Schniz.fnm`, then `fnm install 24.19.0`) and run the Theia commands under `fnm use 24.19.0`; the root project keeps using the default Node. To open the built workbench directly: `theia-app\node_modules\electron\dist\electron.exe theia-app --electronUserData=<dir> <workspace-folder>`.
+
 `theia-app:smoke` first attempts Theia's full native build and Electron launch. If Node 26.3 on Windows cannot prepare the native Theia addons, it prints the exact failure class and falls back explicitly to generated application metadata, preload/main wiring, DI resolution, renderer identity, singleton, and cleanup validation. A fallback is not reported as a real Electron launch.
 
 Generated `node_modules/`, `host/lib/`, `src-gen/`, `lib/`, and `out/` files are ignored. `package-lock.json` is tracked.
