@@ -12,10 +12,56 @@ import hostModule, {
   MissionControlDaemonClient,
   MissionControlHostContribution,
   MissionControlWindowTracker,
+  bundledPluginsEntry,
   canonicalTheiaRendererUrl
 } from "../host/src/electron-main/mission-control-host-module";
 
 describe("isolated Theia Electron host", () => {
+  it("points the plugin deployer at the bundled plugins directory unless one was given", () => {
+    expect(bundledPluginsEntry("C:/Orrery Host")).toBe(`local-dir:${resolve("C:/Orrery Host", "plugins")}`);
+    expect(bundledPluginsEntry("C:/Orrery Host", "local-dir:/elsewhere")).toBe("local-dir:/elsewhere");
+    expect(bundledPluginsEntry(undefined)).toBeUndefined();
+  });
+
+  it("exports the plugins entry to the backend environment at module load", () => {
+    const previous = { project: process.env.THEIA_APP_PROJECT_PATH, plugins: process.env.THEIA_DEFAULT_PLUGINS };
+    try {
+      process.env.THEIA_APP_PROJECT_PATH = resolve("C:/Orrery Host");
+      delete process.env.THEIA_DEFAULT_PLUGINS;
+      const container = new Container();
+      container.bind(ElectronMainApplicationGlobals).toConstantValue({
+        THEIA_APP_PROJECT_PATH: process.env.THEIA_APP_PROJECT_PATH,
+        THEIA_BACKEND_MAIN_PATH: "",
+        THEIA_FRONTEND_HTML_PATH: resolve("lib/frontend/index.html"),
+        THEIA_SECONDARY_WINDOW_HTML_PATH: ""
+      });
+      container.load(hostModule);
+      expect(process.env.THEIA_DEFAULT_PLUGINS).toBe(`local-dir:${resolve("C:/Orrery Host", "plugins")}`);
+    } finally {
+      if (previous.project === undefined) delete process.env.THEIA_APP_PROJECT_PATH; else process.env.THEIA_APP_PROJECT_PATH = previous.project;
+      if (previous.plugins === undefined) delete process.env.THEIA_DEFAULT_PLUGINS; else process.env.THEIA_DEFAULT_PLUGINS = previous.plugins;
+    }
+  });
+
+  it("composes marketplace, extension host, settings, keymaps, source control, debug, and tasks", () => {
+    const application = new ApplicationPackage({ projectPath: process.cwd() });
+    expect([...application.frontendModules.values()]).toEqual(expect.arrayContaining([
+      "@theia/vsx-registry/lib/browser/vsx-registry-frontend-module",
+      "@theia/plugin-ext/lib/plugin-ext-frontend-module",
+      "@theia/plugin-ext-vscode/lib/browser/plugin-vscode-frontend-module",
+      "@theia/preferences/lib/browser/preference-frontend-module",
+      "@theia/keymaps/lib/browser/keymaps-frontend-module",
+      "@theia/scm/lib/browser/scm-frontend-module",
+      "@theia/debug/lib/browser/debug-frontend-module",
+      "@theia/task/lib/browser/task-frontend-module",
+      "@theia/toolbar/lib/browser/toolbar-frontend-module",
+      "@theia/collaboration/lib/browser/collaboration-frontend-module"
+    ]));
+    const manifest = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+    expect(manifest.theiaPluginsDir).toBe("plugins");
+    expect(Object.keys(manifest.theiaPlugins)).toContain("vscode-builtin-extensions");
+    expect(manifest.theiaPluginsExcludeIds).toEqual(expect.arrayContaining(["vscode.extension-editing"]));
+  });
   it("is discovered with the reusable extension in the generated Electron graph", () => {
     const application = new ApplicationPackage({ projectPath: process.cwd() });
     expect(application.target).toBe("electron");
@@ -76,6 +122,9 @@ describe("isolated Theia Electron host", () => {
     expect(tracker.trustedRendererUrl()).toBe(`${expected}?port=57595`);
     expect(tracker.parentWindow()).toBe(window);
     window.webContents.mainFrame.url = `${expected}?port=57595`;
+    expect(tracker.parentWindow()).toBe(window);
+    // A folder is opened by Theia as a fragment on the same document, so it stays trusted.
+    window.webContents.mainFrame.url = `${expected}?port=57595#C:/Users/blazi/orrery`;
     expect(tracker.parentWindow()).toBe(window);
     window.webContents.mainFrame.url = `${expected}?workspace=test`;
     expect(tracker.parentWindow()).toBeNull();

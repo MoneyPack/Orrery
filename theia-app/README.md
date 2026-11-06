@@ -1,6 +1,14 @@
 # Orrery Theia Electron Host
 
-`@orrery/theia-app` is an isolated Eclipse Theia `1.75.0` Electron application. It assembles the reusable `@orrery/mission-control-theia` package with a host-only Electron-main module; it is not part of the root npm workspace or the existing Electron 44 shell.
+`@orrery/theia-app` is an isolated Eclipse Theia `1.75.0` Electron application. It assembles the reusable `@orrery/mission-control-theia` package with a host-only package; it is not part of the root npm workspace or the existing Electron 44 shell.
+
+## Workbench
+
+The composition is a VS Code-class workbench: Explorer, Search, Source Control, Debug, Extensions, and Test in the Activity Bar; editor groups, terminal, problems, output, tasks, keymaps, and the settings editor; plus the Orrery views (Mission Control left, Intelligence and Tools right) opened by `OrreryWorkbenchContribution` on first run. Beyond VS Code it also ships Theia's customizable toolbar, live collaboration (`Collaborate` in the status bar), the property view, timeline, and terminal manager.
+
+Extensions run on Theia's VS Code extension host (`@theia/plugin-ext-vscode`) and install from the Open VSX marketplace (`@theia/vsx-registry`). The VS Code builtin extensions (Git, language features, grammars) are bundled: `npm run download:plugins` populates `theia-app/plugins/` from `theiaPlugins` in `package.json`, honouring `theiaPluginsExcludeIds`; `theia-app:install` runs it. The host's electron-main module exports `THEIA_DEFAULT_PLUGINS=local-dir:<app>/plugins` at module load, because the backend is forked before any contribution's `onStart`.
+
+The host package also contributes the `Orrery Dark` and `Orrery Light` themes (`host/src/browser/orrery-theme.ts`, generated from the Mission Control design tokens) and the default preferences under `theia.frontend.config.preferences`. Theia only applies `defaultTheme` as the `workbench.colorTheme` default when that `preferences` object exists; without it the workbench opens light.
 
 ## Dependency Boundary
 

@@ -13,3 +13,4 @@ execFileSync(process.execPath, [npmCli, "run", "build"], { cwd: extension, stdio
 rmSync(resolve(root, "node_modules/@orrery/mission-control-theia"), { recursive: true, force: true });
 execFileSync(process.execPath, [npmCli, "ci", "--ignore-scripts", "--install-links"], { cwd: root, stdio: "inherit" });
 execFileSync(process.execPath, [npmCli, "rebuild", "@theia/ffmpeg", "native-keymap", "drivelist"], { cwd: root, stdio: "inherit" });
+execFileSync(process.execPath, [npmCli, "run", "download:plugins"], { cwd: root, stdio: "inherit" });

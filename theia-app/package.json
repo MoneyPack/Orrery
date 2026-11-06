@@ -13,6 +13,7 @@
     "build:host": "node scripts/build-host.mjs",
     "build:full": "npm run build:host && node scripts/application-manager.mjs build --mode=development",
     "generate": "node scripts/generate-application.mjs",
+    "download:plugins": "node scripts/download-plugins.mjs",
     "typecheck": "tsc -p host/tsconfig.json --noEmit && tsc -p tsconfig.test.json --pretty false",
     "test": "npm run generate && vitest run",
     "smoke": "node scripts/smoke.mjs",
@@ -21,19 +22,54 @@
   "dependencies": {
     "@orrery/mission-control-theia": "file:../theia-extensions/mission-control",
     "@orrery/theia-host": "file:./host",
+    "@theia/bulk-edit": "1.75.0",
+    "@theia/callhierarchy": "1.75.0",
+    "@theia/collaboration": "1.75.0",
+    "@theia/console": "1.75.0",
     "@theia/core": "1.75.0",
-    "@theia/electron": "1.75.0",
-    "@theia/filesystem": "1.75.0",
-    "@theia/workspace": "1.75.0",
-    "@theia/navigator": "1.75.0",
+    "@theia/debug": "1.75.0",
     "@theia/editor": "1.75.0",
-    "@theia/monaco": "1.75.0",
-    "@theia/terminal": "1.75.0",
-    "@theia/preferences": "1.75.0",
-    "@theia/output": "1.75.0",
+    "@theia/editor-preview": "1.75.0",
+    "@theia/electron": "1.75.0",
+    "@theia/external-terminal": "1.75.0",
+    "@theia/file-search": "1.75.0",
+    "@theia/filesystem": "1.75.0",
+    "@theia/keymaps": "1.75.0",
     "@theia/markers": "1.75.0",
-    "@theia/search-in-workspace": "1.75.0"
+    "@theia/messages": "1.75.0",
+    "@theia/monaco": "1.75.0",
+    "@theia/navigator": "1.75.0",
+    "@theia/outline-view": "1.75.0",
+    "@theia/output": "1.75.0",
+    "@theia/plugin-ext": "1.75.0",
+    "@theia/plugin-ext-vscode": "1.75.0",
+    "@theia/preferences": "1.75.0",
+    "@theia/process": "1.75.0",
+    "@theia/property-view": "1.75.0",
+    "@theia/scm": "1.75.0",
+    "@theia/search-in-workspace": "1.75.0",
+    "@theia/secondary-window": "1.75.0",
+    "@theia/task": "1.75.0",
+    "@theia/terminal": "1.75.0",
+    "@theia/terminal-manager": "1.75.0",
+    "@theia/test": "1.75.0",
+    "@theia/timeline": "1.75.0",
+    "@theia/toolbar": "1.75.0",
+    "@theia/typehierarchy": "1.75.0",
+    "@theia/userstorage": "1.75.0",
+    "@theia/variable-resolver": "1.75.0",
+    "@theia/vsx-registry": "1.75.0",
+    "@theia/workspace": "1.75.0"
   },
+  "theiaPluginsDir": "plugins",
+  "theiaPlugins": {
+    "vscode-builtin-extensions": "https://github.com/eclipse-theia/vscode-builtin-extensions/releases/download/1.108.2/vscode-builtin-extensions-1.108.2.tar.gz"
+  },
+  "theiaPluginsExcludeIds": [
+    "ms-vscode.js-debug-companion",
+    "vscode.extension-editing",
+    "vscode.microsoft-authentication"
+  ],
   "devDependencies": {
     "@theia/application-package": "1.75.0",
     "@theia/application-manager": "1.75.0",
@@ -48,6 +84,29 @@
     "frontend": {
       "config": {
         "applicationName": "Orrery Mission Control",
+        "defaultTheme": "orrery-dark",
+        "preferences": {
+          "workbench.colorTheme": "orrery-dark",
+          "editor.fontFamily": "'JetBrains Mono', 'Cascadia Code', 'SFMono-Regular', Consolas, monospace",
+          "editor.fontSize": 13,
+          "editor.lineHeight": 20,
+          "editor.fontLigatures": true,
+          "editor.cursorBlinking": "smooth",
+          "editor.cursorSmoothCaretAnimation": "on",
+          "editor.smoothScrolling": true,
+          "editor.renderLineHighlight": "line",
+          "editor.minimap.renderCharacters": false,
+          "editor.bracketPairColorization.enabled": true,
+          "editor.guides.bracketPairs": "active",
+          "terminal.integrated.fontFamily": "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+          "terminal.integrated.fontSize": 12,
+          "workbench.tree.indent": 12,
+          "workbench.tree.renderIndentGuides": "always",
+          "workbench.statusBar.visible": true,
+          "window.menuBarVisibility": "classic",
+          "toolbar.showToolbar": true,
+          "extensions.vsx.registry.url": "https://open-vsx.org"
+        },
         "electron": {
           "windowOptions": {
             "webPreferences": {
@@ -58,6 +117,14 @@
             }
           }
         }
+      }
+    },
+    "backend": {
+      "config": {
+        "frontendConnectionTimeout": -1,
+        "startupTimeout": -1,
+        "resolveSystemPlugins": false,
+        "configurationFolder": ".orrery"
       }
     }
   }

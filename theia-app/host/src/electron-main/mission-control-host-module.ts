@@ -148,10 +148,12 @@ export class MissionControlWindowTracker {
       const candidate = new URL(url);
       const expected = new URL(this.frontendUrl);
       const port = candidate.searchParams.get("port");
+      // The fragment is deliberately not compared: Theia opens a folder by loading the same
+      // document with `#<workspace path>` (ElectronMainApplication.openWindowWithWorkspace),
+      // and the fragment never changes which document or port the frame loaded.
       return candidate.protocol === expected.protocol
         && candidate.host === expected.host
         && candidate.pathname === expected.pathname
-        && candidate.hash === expected.hash
         && [...candidate.searchParams.keys()].length === 1
         && port !== null
         && /^\d+$/.test(port)
@@ -249,7 +251,24 @@ export class MissionControlHostContribution implements ElectronMainApplicationCo
   }
 }
 
+/**
+ * The bundled plugin directory as a Theia `--plugins` entry.
+ *
+ * Theia's plugin deployer reads `THEIA_DEFAULT_PLUGINS` in the backend; nothing sets it for an
+ * Electron app unless the product does. The backend is forked before any electron-main
+ * contribution's `onStart` runs, so the only place early enough is module load, where the
+ * generated entry has already exported `THEIA_APP_PROJECT_PATH`. An explicit value from the
+ * environment or CLI always wins so packaging and tests can redirect it.
+ */
+export function bundledPluginsEntry(projectPath: string | undefined, current: string | undefined = undefined): string | undefined {
+  if (current) return current;
+  if (!projectPath) return undefined;
+  return `local-dir:${resolve(projectPath, "plugins")}`;
+}
+
 export default new ContainerModule(bind => {
+  const plugins = bundledPluginsEntry(process.env.THEIA_APP_PROJECT_PATH, process.env.THEIA_DEFAULT_PLUGINS);
+  if (plugins) process.env.THEIA_DEFAULT_PLUGINS = plugins;
   bind(MissionControlWindowTracker).toSelf().inSingletonScope();
   bind(MissionControlDaemonClient).toDynamicValue(context => new MissionControlDaemonClient(
     () => context.container.get(MissionControlWindowTracker).parentWindow()
